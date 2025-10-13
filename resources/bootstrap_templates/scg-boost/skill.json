@@ -1,0 +1,16 @@
+{
+  "id": "scg-boost",
+  "name": "scg-boost",
+  "type": "library",
+  "version": "1.0.0",
+  "description": "MCP server and context bootstrapper for SCG repositories",
+  "tags": [
+    "tool",
+    "mcp",
+    "cli"
+  ],
+  "repo_types": [
+    "go-service"
+  ],
+  "author": "SupplyChainGuard"
+}

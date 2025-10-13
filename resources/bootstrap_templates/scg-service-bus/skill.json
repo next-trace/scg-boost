@@ -1,0 +1,17 @@
+{
+  "id": "scg-service-bus",
+  "name": "scg-service-bus",
+  "type": "library",
+  "version": "1.0.0",
+  "description": "Event bus and message queue abstractions",
+  "tags": [
+    "library",
+    "messaging",
+    "events",
+    "pubsub"
+  ],
+  "repo_types": [
+    "go-library"
+  ],
+  "author": "SupplyChainGuard"
+}

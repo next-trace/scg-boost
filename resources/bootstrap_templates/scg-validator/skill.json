@@ -1,0 +1,16 @@
+{
+  "id": "scg-validator",
+  "name": "scg-validator",
+  "type": "library",
+  "version": "1.0.0",
+  "description": "Input validation and data sanitization",
+  "tags": [
+    "library",
+    "validation",
+    "sanitization"
+  ],
+  "repo_types": [
+    "go-library"
+  ],
+  "author": "SupplyChainGuard"
+}

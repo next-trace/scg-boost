@@ -1,0 +1,19 @@
+{
+  "id": "generic",
+  "name": "generic",
+  "type": "generic",
+  "version": "1.0.0",
+  "description": "Baseline context for any SCG repository",
+  "tags": [
+    "baseline",
+    "generic"
+  ],
+  "repo_types": [
+    "generic"
+  ],
+  "author": "SupplyChainGuard",
+  "override_paths": [
+    ".claude/CLAUDE.md#repo-specific-rules",
+    ".claude/commands/custom.md"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "scg-config",
+  "name": "scg-config",
+  "type": "library",
+  "version": "1.0.0",
+  "description": "Configuration management library with environment variable support",
+  "tags": [
+    "library",
+    "config",
+    "environment"
+  ],
+  "repo_types": [
+    "go-library"
+  ],
+  "author": "SupplyChainGuard"
+}

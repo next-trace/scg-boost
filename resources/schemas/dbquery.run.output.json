@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "dbquery.run output",
+  "type": "object",
+  "properties": {
+    "rows": { "type":"array", "items":{"type":"object","additionalProperties":true} },
+    "rowCount": { "type":"integer", "minimum":0 }
+  },
+  "required": ["rows","rowCount"],
+  "additionalProperties": true
+}

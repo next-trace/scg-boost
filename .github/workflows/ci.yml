@@ -1,0 +1,188 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GOTOOLCHAIN: local
+    outputs:
+      go-version: ${{ steps.scg-vars.outputs.go-version }}
+      golangci-lint-version: ${{ steps.scg-vars.outputs.golangci-lint-version }}
+      govulncheck-version: ${{ steps.scg-vars.outputs.govulncheck-version }}
+      gosec-version: ${{ steps.scg-vars.outputs.gosec-version }}
+      coverage-threshold: ${{ steps.scg-vars.outputs.coverage-threshold }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify LICENSE is present and complete
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f LICENSE ]]; then
+            echo "::error::LICENSE is missing"
+            exit 1
+          fi
+          size=$(wc -c < LICENSE | tr -d ' ')
+          if [[ "$size" -lt 500 ]]; then
+            echo "::error::LICENSE is too small ($size bytes)"
+            exit 1
+          fi
+
+      - name: Guard against committed binaries/artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          root_files=$(find . -maxdepth 1 -type f -print)
+          for file in $root_files; do
+            magic=$(head -c 4 "$file" | LC_ALL=C cat)
+            if [[ "$magic" == $'\x7f''ELF' ]] || [[ "$magic" == 'MZ'?? ]]; then
+              echo "::error::Binary artifact found in repo root: $file"
+              exit 1
+            fi
+          done
+
+          tracked_artifacts=$(git ls-files -z | tr '\0' '\n' | grep -E '(^|/)(dist/|build/|bin/)|(^|/)scg-boost$|\\.out$|(^|/)coverage\\.' || true)
+          if [[ -n "$tracked_artifacts" ]]; then
+            echo "::error::Tracked artifact(s) detected:"
+            echo "$tracked_artifacts"
+            exit 1
+          fi
+
+      - name: Verify repository is clean of artifacts
+        shell: bash
+        run: ./scripts/verify-clean.sh
+
+      - name: Load SCG variables
+        id: scg-vars
+        uses: ./.github/actions/load-scg-vars
+
+      - uses: ./.github/actions/go-setup
+        with:
+          go-version: ${{ steps.scg-vars.outputs.go-version }}
+
+      - name: Verify Go version matches requirement
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED="1.25.7"
+          ACTUAL=$(go version | awk '{print $3}' | sed 's/go//')
+          echo "Expected Go: $EXPECTED"
+          echo "Actual Go: $ACTUAL"
+          if [[ "$ACTUAL" != "$EXPECTED" ]]; then
+            echo "::error::Go version mismatch. Expected $EXPECTED, got $ACTUAL"
+            exit 1
+          fi
+
+      - name: go mod tidy (check)
+        shell: bash
+        run: |
+          set -euo pipefail
+          go mod tidy
+          git diff --exit-code
+
+      - name: Build all packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "::group::Building all packages"
+          go build -v ./...
+          echo "::endgroup::"
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [build]
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load SCG variables
+        uses: ./.github/actions/load-scg-vars
+
+      - uses: ./.github/actions/go-setup
+        with:
+          go-version: ${{ needs.build.outputs.go-version }}
+
+      - name: Test
+        run: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.txt
+          fail_ci_if_error: false
+
+  quality:
+    name: Quality (lint + security + guards)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [build]
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load SCG variables
+        uses: ./.github/actions/load-scg-vars
+
+      - uses: ./.github/actions/go-ci-suite
+        with:
+          go-version: ${{ needs.build.outputs.go-version }}
+          golangci-lint-version: ${{ needs.build.outputs.golangci-lint-version }}
+          govulncheck-version: ${{ needs.build.outputs.govulncheck-version }}
+          gosec-version: ${{ needs.build.outputs.gosec-version }}
+
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [build]
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load SCG variables
+        uses: ./.github/actions/load-scg-vars
+
+      - uses: ./.github/actions/go-setup
+        with:
+          go-version: ${{ needs.build.outputs.go-version }}
+
+      - name: Run Gosec Security Scanner
+        uses: securego/gosec@master
+        with:
+          args: -exclude-generated ./...
+
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [build]
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load SCG variables
+        uses: ./.github/actions/load-scg-vars
+
+      - uses: ./.github/actions/go-setup
+        with:
+          go-version: ${{ needs.build.outputs.go-version }}
+
+      - name: Run integration tests
+        run: go test -tags=integration -v ./...

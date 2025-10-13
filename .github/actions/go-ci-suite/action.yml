@@ -1,0 +1,74 @@
+name: Go CI Suite (SCG)
+description: gofmt + go vet + golangci-lint + govulncheck + repo CI guards
+
+inputs:
+  go-version:
+    required: true
+  golangci-lint-version:
+    required: true
+  govulncheck-version:
+    required: true
+  gosec-version:
+    required: true
+  github-token:
+    required: false
+    description: "GitHub token for private module access (optional)"
+
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/go-setup
+      with:
+        go-version: ${{ inputs.go-version }}
+        github-token: ${{ inputs.github-token }}
+
+    - name: Cache golangci-lint cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/golangci-lint
+        key: ${{ runner.os }}-golangci-${{ inputs.golangci-lint-version }}-${{ hashFiles('.golangci.yml', 'go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-golangci-${{ inputs.golangci-lint-version }}-
+
+    - name: gofmt (check)
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -n "$(gofmt -l .)" ]; then
+          echo "ERROR: gofmt required"
+          gofmt -l .
+          exit 1
+        fi
+
+    - name: go vet
+      shell: bash
+      run: |
+        set -euo pipefail
+        go vet ./...
+
+    - name: golangci-lint
+      shell: bash
+      run: |
+        set -euo pipefail
+        # v2 MUST use /v2 module path, otherwise you get "unknown revision"
+        go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${{ inputs.golangci-lint-version }}
+        golangci-lint run --config .golangci.yml ./...
+
+    - name: govulncheck
+      shell: bash
+      run: |
+        set -euo pipefail
+        go install golang.org/x/vuln/cmd/govulncheck@${{ inputs.govulncheck-version }}
+        govulncheck ./...
+
+    - name: gosec
+      shell: bash
+      run: |
+        set -euo pipefail
+        go install github.com/securego/gosec/v2/cmd/gosec@${{ inputs.gosec-version }}
+
+    - name: CI guards
+      shell: bash
+      run: |
+        set -euo pipefail
+        bash ./scripts/guards.sh

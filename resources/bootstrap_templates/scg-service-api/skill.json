@@ -1,0 +1,21 @@
+{
+  "id": "scg-service-api",
+  "name": "scg-service-api",
+  "type": "library",
+  "version": "1.0.0",
+  "description": "HTTP API framework with middleware and routing",
+  "tags": [
+    "library",
+    "http",
+    "api",
+    "middleware"
+  ],
+  "repo_types": [
+    "go-library"
+  ],
+  "author": "SupplyChainGuard",
+  "depends_on": [
+    "scg-error",
+    "scg-logger"
+  ]
+}

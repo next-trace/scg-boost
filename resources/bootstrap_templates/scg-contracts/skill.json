@@ -1,0 +1,16 @@
+{
+  "id": "scg-contracts",
+  "name": "scg-contracts",
+  "type": "library",
+  "version": "1.0.0",
+  "description": "Shared data contracts and domain models for SCG services",
+  "tags": [
+    "library",
+    "contracts",
+    "models"
+  ],
+  "repo_types": [
+    "go-library"
+  ],
+  "author": "SupplyChainGuard"
+}

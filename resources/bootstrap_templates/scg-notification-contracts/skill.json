@@ -1,0 +1,17 @@
+{
+  "id": "scg-notification-contracts",
+  "name": "scg-notification-contracts",
+  "type": "library",
+  "version": "1.0.0",
+  "description": "Notification event contracts and schemas",
+  "tags": [
+    "library",
+    "contracts",
+    "notifications",
+    "events"
+  ],
+  "repo_types": [
+    "go-library"
+  ],
+  "author": "SupplyChainGuard"
+}

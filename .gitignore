@@ -1,0 +1,28 @@
+# Binaries
+/scg-boost
+/cmd/scg-boost/scg-boost
+/bin/
+/dist/
+/build/
+
+# Go
+*.test
+*.out
+coverage.txt
+coverage.html
+coverage.*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+/tmp/
+/testdata/output/

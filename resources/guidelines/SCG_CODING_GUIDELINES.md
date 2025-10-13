@@ -1,0 +1,12 @@
+- Principles: KISS, SOLID, DRY, YAGNI. Prefer composition; small testable units.
+- Libraries NEVER log. Return rich, wrapped errors; app layer logs with correlation IDs.
+- Naming: full words; only canonical abbreviations (ID, UUID, URL, HTTP, JSON, TCP, EOF, DB). Package names: short, lower-case single word. Every exported symbol has a one-line doc comment.
+- Go idioms: errors first, zero values, small interfaces at consumer side, avoid any unless truly generic, ≤ ~80 LOC functions.
+- Errors: fmt.Errorf("op: %w", err); no panic in libs; sentinel/typed errors only if part of contract.
+- Concurrency: accept context.Context; no leaks; select on ctx.Done; protect shared state.
+- Testing: unit + integration; for repos prefer real Postgres; deterministic fixtures; no flaky sleeps; use timeouts/polling.
+- DB (MCP): read-only in prod; parameterized queries; row limits; schema allowlist.
+- Security: least privilege; redact secrets; never expose raw env.
+- Versioning: SemVer; break public API only on major versions.
+- Repo hygiene: stable surface in boost/; volatile in internal/; concise README; runnable example.
+- Docs: record key decisions; minimal example usage for every exported entry point.

@@ -1,0 +1,16 @@
+{
+  "id": "scg-logger",
+  "name": "scg-logger",
+  "type": "library",
+  "version": "1.0.0",
+  "description": "Structured logging with context propagation",
+  "tags": [
+    "library",
+    "logging",
+    "observability"
+  ],
+  "repo_types": [
+    "go-library"
+  ],
+  "author": "SupplyChainGuard"
+}

@@ -1,0 +1,17 @@
+{
+  "id": "scg-database",
+  "name": "scg-database",
+  "type": "library",
+  "version": "1.0.0",
+  "description": "Database utilities, migrations, and connection management",
+  "tags": [
+    "library",
+    "database",
+    "postgres",
+    "migrations"
+  ],
+  "repo_types": [
+    "go-library"
+  ],
+  "author": "SupplyChainGuard"
+}

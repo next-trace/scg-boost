@@ -1,0 +1,19 @@
+{
+  "id": "scg-infra",
+  "name": "scg-infra",
+  "type": "library",
+  "version": "1.0.0",
+  "description": "Infrastructure as code with Terraform for SCG services",
+  "tags": [
+    "terraform",
+    "infra",
+    "iac"
+  ],
+  "repo_types": [
+    "terraform"
+  ],
+  "author": "SupplyChainGuard",
+  "override_paths": [
+    ".claude/CLAUDE.md#repo-specific-rules"
+  ]
+}

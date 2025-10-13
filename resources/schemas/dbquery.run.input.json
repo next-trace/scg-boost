@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "dbquery.run input",
+  "type": "object",
+  "properties": {
+    "query": { "type": "string", "minLength": 1 },
+    "params": { "type": "object", "additionalProperties": true }
+  },
+  "required": ["query"],
+  "additionalProperties": false
+}

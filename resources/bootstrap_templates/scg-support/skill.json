@@ -1,0 +1,16 @@
+{
+  "id": "scg-support",
+  "name": "scg-support",
+  "type": "library",
+  "version": "1.0.0",
+  "description": "Support utilities and helper functions",
+  "tags": [
+    "library",
+    "utilities",
+    "helpers"
+  ],
+  "repo_types": [
+    "go-library"
+  ],
+  "author": "SupplyChainGuard"
+}

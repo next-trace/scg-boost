@@ -1,0 +1,45 @@
+name: "Load SCG Variables"
+description: "Load tool versions from scg.vars.sh (single source of truth) and export to GITHUB_ENV"
+
+outputs:
+  go-version:
+    description: "Go version from scg.vars.sh"
+    value: ${{ steps.load-vars.outputs.go-version }}
+  golangci-lint-version:
+    description: "golangci-lint version from scg.vars.sh"
+    value: ${{ steps.load-vars.outputs.golangci-lint-version }}
+  govulncheck-version:
+    description: "govulncheck version from scg.vars.sh"
+    value: ${{ steps.load-vars.outputs.govulncheck-version }}
+  coverage-threshold:
+    description: "Coverage threshold from scg.vars.sh"
+    value: ${{ steps.load-vars.outputs.coverage-threshold }}
+  gosec-version:
+    description: "gosec version from scg.vars.sh"
+    value: ${{ steps.load-vars.outputs.gosec-version }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Load tool versions from scg.vars.sh
+      id: load-vars
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        # Source the single source of truth for tool versions
+        source ./scripts/scg.vars.sh
+
+        # Export to GITHUB_ENV for use in current job
+        echo "GO_VERSION=${GO_REQUIRED}" >> "$GITHUB_ENV"
+        echo "GOLANGCI_LINT_VERSION=${GOLANGCI_LINT_VERSION}" >> "$GITHUB_ENV"
+        echo "GOVULNCHECK_VERSION=${GOVULNCHECK_VERSION}" >> "$GITHUB_ENV"
+        echo "GOSEC_VERSION=${GOSEC_VERSION}" >> "$GITHUB_ENV"
+        echo "COVERAGE_THRESHOLD=${COVERAGE_THRESHOLD}" >> "$GITHUB_ENV"
+
+        # Export to outputs for use in other jobs
+        echo "go-version=${GO_REQUIRED}" >> "$GITHUB_OUTPUT"
+        echo "golangci-lint-version=${GOLANGCI_LINT_VERSION}" >> "$GITHUB_OUTPUT"
+        echo "govulncheck-version=${GOVULNCHECK_VERSION}" >> "$GITHUB_OUTPUT"
+        echo "gosec-version=${GOSEC_VERSION}" >> "$GITHUB_OUTPUT"
+        echo "coverage-threshold=${COVERAGE_THRESHOLD}" >> "$GITHUB_OUTPUT"

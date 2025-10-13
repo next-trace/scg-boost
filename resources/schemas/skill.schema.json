@@ -1,0 +1,104 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://supplychainguard.com/schemas/skill.schema.json",
+  "title": "SCG-Boost Skill Metadata",
+  "description": "Metadata schema for SCG-Boost skills",
+  "type": "object",
+  "required": ["id", "name", "type", "version", "description", "repo_types"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique skill identifier (must match directory name)",
+      "pattern": "^[a-z0-9-]+$",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable skill name",
+      "minLength": 1
+    },
+    "type": {
+      "type": "string",
+      "description": "Skill category",
+      "enum": [
+        "concrete",
+        "library",
+        "generic"
+      ]
+    },
+    "version": {
+      "type": "string",
+      "description": "Semantic version (e.g., 1.0.0)",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief description of the skill",
+      "minLength": 1
+    },
+    "repo_types": {
+      "type": "array",
+      "description": "Repository types this skill applies to",
+      "items": {
+        "type": "string",
+        "enum": [
+          "go-service",
+          "go-library",
+          "terraform",
+          "generic"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "tags": {
+      "type": "array",
+      "description": "Tags for categorization and search",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9-]+$"
+      },
+      "uniqueItems": true
+    },
+    "author": {
+      "type": "string",
+      "description": "Author or organization name"
+    },
+    "depends_on": {
+      "type": "array",
+      "description": "Skill IDs this skill depends on",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9-]+$"
+      },
+      "uniqueItems": true
+    },
+    "conflicts_with": {
+      "type": "array",
+      "description": "Skill IDs that conflict with this skill",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9-]+$"
+      },
+      "uniqueItems": true
+    },
+    "provides": {
+      "type": "array",
+      "description": "Capabilities this skill provides",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "override_paths": {
+      "type": "array",
+      "description": "Paths safe to override (supports # for sections)",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    }
+  },
+  "additionalProperties": false
+}

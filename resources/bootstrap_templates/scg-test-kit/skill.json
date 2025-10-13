@@ -1,0 +1,16 @@
+{
+  "id": "scg-test-kit",
+  "name": "scg-test-kit",
+  "type": "library",
+  "version": "1.0.0",
+  "description": "Testing utilities, fixtures, and test helpers",
+  "tags": [
+    "library",
+    "testing",
+    "fixtures"
+  ],
+  "repo_types": [
+    "go-library"
+  ],
+  "author": "SupplyChainGuard"
+}

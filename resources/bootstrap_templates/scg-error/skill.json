@@ -1,0 +1,16 @@
+{
+  "id": "scg-error",
+  "name": "scg-error",
+  "type": "library",
+  "version": "1.0.0",
+  "description": "Structured error handling with codes and context",
+  "tags": [
+    "library",
+    "error",
+    "handling"
+  ],
+  "repo_types": [
+    "go-library"
+  ],
+  "author": "SupplyChainGuard"
+}

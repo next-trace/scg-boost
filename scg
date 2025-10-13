@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# ===== Variables =====
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${ROOT_DIR}/scripts/scg.vars.sh"
+
+GO_REQUIRED="${GO_REQUIRED}"
+GOLANGCI_LINT_VERSION="${GOLANGCI_LINT_VERSION}"
+GOVULNCHECK_VERSION="${GOVULNCHECK_VERSION}"
+COVERAGE_THRESHOLD="${COVERAGE_THRESHOLD}"
+
+GOLANGCI_LINT=${GOLANGCI_LINT:-golangci-lint}
+GOIMPORTS=${GOIMPORTS:-goimports}
+
+# ===== Load functions =====
+source "${ROOT_DIR}/scripts/functions.sh"
+
+# ===== Menu (help) =====
+menu() {
+  cat <<'MENU'
+scg — scg-boost library helper
+
+Usage: ./scg <command>
+
+Dev:
+  deps              go mod tidy + download
+  fmt               Format code with goimports
+  lint              Run golangci-lint
+  vet               Run go vet
+  build             Build all packages
+  test              Run all tests with race detector
+  test:unit         Run unit tests only (short mode)
+  coverage          Check test coverage
+
+Ops:
+  doctor            Check prerequisites (Go version, tools)
+  ci                Run full CI suite (deps, fmt, vet, lint, build, test)
+  clean             Clean build artifacts
+  guards [opts]     Run repository guards
+
+Help:
+  help              Show this menu
+
+Examples:
+  ./scg doctor      # Check prerequisites
+  ./scg ci          # Run full CI pipeline
+  ./scg coverage    # Check test coverage
+  ./scg guards      # Run repository validation
+MENU
+}
+
+# ===== Dispatch =====
+main() {
+  local cmd="${1:-help}"; shift || true
+  case "$cmd" in
+    help|-h|--help)     menu ;;
+
+    deps)               fn_deps ;;
+    fmt)                fn_fmt ;;
+    lint)               fn_lint ;;
+    vet)                fn_vet ;;
+    build)              fn_build ;;
+    test)               fn_test ;;
+    test:unit)          fn_test_unit ;;
+    coverage)           fn_coverage "$@" ;;
+
+    doctor)             fn_doctor ;;
+    ci)                 fn_ci "$@" ;;
+    clean)              fn_clean ;;
+    guards)             fn_guards "$@" ;;
+
+    *) echo "Unknown command: $cmd"; menu; exit 1 ;;
+  esac
+}
+
+main "$@"

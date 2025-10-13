@@ -1,0 +1,41 @@
+name: "Go Setup + Cache"
+description: "Setup Go and cache build/module via setup-go (no duplicate caching)"
+
+inputs:
+  go-version:
+    required: true
+    description: "go version to install"
+  go-sum-path:
+    required: false
+    default: "go.sum"
+    description: "path to go.sum"
+  github-token:
+    required: false
+    description: "GitHub token for private Go module access (optional)"
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+        cache: true
+        cache-dependency-path: ${{ inputs.go-sum-path }}
+
+    - name: Configure git for private modules
+      if: ${{ inputs.github-token != '' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -euo pipefail
+        git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+
+    - name: Cache Go tools (~/go/bin)
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/go/bin
+        key: ${{ runner.os }}-go-tools-${{ inputs.go-version }}-${{ hashFiles(inputs.go-sum-path) }}
+        restore-keys: |
+          ${{ runner.os }}-go-tools-${{ inputs.go-version }}-

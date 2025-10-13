@@ -1,0 +1,31 @@
+{
+  "id": "gateway-service",
+  "name": "gateway-service",
+  "type": "concrete",
+  "version": "1.0.0",
+  "description": "Public edge/data-plane REST/HTTP service with read-only Redis enforcement",
+  "tags": [
+    "service",
+    "http",
+    "gateway",
+    "redis"
+  ],
+  "repo_types": [
+    "go-service"
+  ],
+  "author": "SupplyChainGuard",
+  "depends_on": [
+    "scg-error",
+    "scg-logger",
+    "scg-validator"
+  ],
+  "provides": [
+    "http-handlers",
+    "redis-client",
+    "rate-limiting"
+  ],
+  "override_paths": [
+    ".claude/CLAUDE.md#repo-specific-rules",
+    ".claude/commands/custom.md"
+  ]
+}
