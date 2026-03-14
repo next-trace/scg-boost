@@ -4,7 +4,7 @@
 
 ### Go Toolchain
 
-SCG-Boost requires **Go 1.25.7 exactly** for deterministic builds.
+SCG-Boost requires **Go 1.26.1 exactly** for deterministic builds.
 
 #### Why Strict Versioning?
 
@@ -15,13 +15,13 @@ SCG-Boost requires **Go 1.25.7 exactly** for deterministic builds.
 #### Installation
 
 ```sh
-# Download and install Go 1.25.7
-go install golang.org/dl/go1.25.7@latest
-go1.25.7 download
+# Download and install Go 1.26.1
+go install golang.org/dl/go1.26.1@latest
+go1.26.1 download
 
 # Verify installation
-go1.25.7 version
-# Output: go version go1.25.7 linux/amd64
+go1.26.1 version
+# Output: go version go1.26.1 linux/amd64
 ```
 
 #### Using the Correct Toolchain
@@ -29,31 +29,31 @@ go1.25.7 version
 **Option 1: Set GOTOOLCHAIN environment variable (Recommended)**
 
 ```sh
-export GOTOOLCHAIN=go1.25.7
-go version  # Should show go1.25.7
+export GOTOOLCHAIN=go1.26.1
+go version  # Should show go1.26.1
 ```
 
 Add to your shell profile (`~/.bashrc`, `~/.zshrc`):
 ```sh
-export GOTOOLCHAIN=go1.25.7
+export GOTOOLCHAIN=go1.26.1
 ```
 
 **Option 2: Use the specific binary**
 
 ```sh
-go1.25.7 build ./...
-go1.25.7 test ./...
+go1.26.1 build ./...
+go1.26.1 test ./...
 ```
 
 **Option 3: Install as default**
 
-If you only work on Go 1.25.7 projects:
+If you only work on Go 1.26.1 projects:
 ```sh
 # Backup existing installation
 sudo mv /usr/local/go /usr/local/go-backup
 
-# Link to 1.25.7
-sudo ln -s $(go1.25.7 env GOROOT) /usr/local/go
+# Link to 1.26.1
+sudo ln -s $(go1.26.1 env GOROOT) /usr/local/go
 ```
 
 #### Verification
@@ -63,11 +63,11 @@ sudo ln -s $(go1.25.7 env GOROOT) /usr/local/go
 go version
 
 # Verify it matches requirement
-go version | grep -q "go1.25.7" && echo "✓ Correct version" || echo "✗ Wrong version"
+go version | grep -q "go1.26.1" && echo "✓ Correct version" || echo "✗ Wrong version"
 
 # Check GOTOOLCHAIN setting
 echo $GOTOOLCHAIN
-# Should output: go1.25.7 or local
+# Should output: go1.26.1
 ```
 
 ## Local Development
@@ -80,7 +80,7 @@ git clone https://github.com/next-trace/scg-boost.git
 cd scg-boost
 
 # Set toolchain (if not in profile)
-export GOTOOLCHAIN=go1.25.7
+export GOTOOLCHAIN=go1.26.1
 
 # Verify setup
 go version
@@ -247,8 +247,8 @@ Run with: `go test -tags=integration ./...`
 
 **Solution:**
 ```sh
-export GOTOOLCHAIN=go1.25.7
-go version  # Verify it shows 1.25.7
+export GOTOOLCHAIN=go1.26.1
+go version  # Verify it shows 1.26.1
 ```
 
 ### Tests Failing Locally but Passing in CI
@@ -264,7 +264,7 @@ go version  # Verify it shows 1.25.7
 ```sh
 # Clean cache and rerun
 go clean -testcache
-export GOTOOLCHAIN=go1.25.7
+export GOTOOLCHAIN=go1.26.1
 go test ./...
 ```
 
@@ -292,6 +292,6 @@ golangci-lint run --verbose
 
 ## Resources
 
-- [Go 1.25 Release Notes](https://go.dev/doc/go1.25)
+- [Go 1.26 Release Notes](https://go.dev/doc/go1.26)
 - [MCP Specification](https://spec.modelcontextprotocol.io)
 - [SCG Coding Guidelines](../resources/guidelines/SCG_CODING_GUIDELINES.md)

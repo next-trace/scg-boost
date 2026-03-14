@@ -10,6 +10,12 @@ import (
 	"strings"
 )
 
+var defaultAssistantFiles = map[string]string{
+	".claude/CLAUDE.md": "# SCG Context\n\nLocal bootstrap context for this repository.\n",
+	".codex/CODEX.md":   "# Codex Context\n\nLocal Codex context for this repository.\n",
+	".gemini/GEMINI.md": "# Gemini Context\n\nLocal Gemini context for this repository.\n",
+}
+
 type InstallOptions struct {
 	RepoName  string
 	TargetDir string
@@ -35,15 +41,18 @@ func Install(templates fs.FS, opt InstallOptions) error {
 		opt.RepoName = filepath.Base(opt.TargetDir)
 	}
 
-	// Ensure repo template exists; fallback to _generic
-	srcRoot := filepath.ToSlash(filepath.Join(opt.RepoName, ".claude"))
-	if _, err := fs.Stat(templates, srcRoot); err != nil {
-		srcRoot = "_generic/.claude"
-		if _, err2 := fs.Stat(templates, srcRoot); err2 != nil {
+	// Ensure repo folder exists in templates; fallback to _generic
+	srcRepo := opt.RepoName
+	if _, err := fs.Stat(templates, srcRepo); err != nil {
+		srcRepo = "_generic"
+		if _, err2 := fs.Stat(templates, srcRepo); err2 != nil {
 			return fmt.Errorf("missing embedded templates: %w", err2)
 		}
 	}
 
+	// We pass the .claude path because the installer expects it as a starting point,
+	// but it will also look for sibling .gemini and .codex.
+	srcRoot := filepath.ToSlash(filepath.Join(srcRepo, ".claude"))
 	return installFromPath(templates, srcRoot, opt)
 }
 
@@ -142,6 +151,34 @@ func installFromPath(templates fs.FS, srcRoot string, opt InstallOptions) error 
 		if err != nil {
 			return err
 		}
+	}
+
+	// Keep bootstrap usable in CI builds where assistant template files are
+	// intentionally not embedded from Git-tracked assets.
+	for relPath, content := range defaultAssistantFiles {
+		if err := ensureDefaultFile(root, relPath, content); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureDefaultFile(root *os.Root, relPath, content string) error {
+	if _, err := root.Stat(relPath); err == nil {
+		return nil
+	}
+	if err := root.MkdirAll(filepath.Dir(relPath), 0o750); err != nil {
+		return fmt.Errorf("mkdir %s: %w", relPath, err)
+	}
+	f, err := root.OpenFile(relPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", relPath, err)
+	}
+	defer func() {
+		_ = f.Close()
+	}()
+	if _, err := f.WriteString(content); err != nil {
+		return fmt.Errorf("write %s: %w", relPath, err)
 	}
 	return nil
 }

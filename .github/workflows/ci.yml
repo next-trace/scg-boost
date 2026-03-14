@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      GOTOOLCHAIN: local
+      GOTOOLCHAIN: go1.26.1
     outputs:
       go-version: ${{ steps.scg-vars.outputs.go-version }}
       golangci-lint-version: ${{ steps.scg-vars.outputs.golangci-lint-version }}
@@ -75,7 +75,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          EXPECTED="1.26.1"
+          EXPECTED="${{ steps.scg-vars.outputs.go-version }}"
           ACTUAL=$(go version | awk '{print $3}' | sed 's/go//')
           echo "Expected Go: $EXPECTED"
           echo "Actual Go: $ACTUAL"
@@ -105,7 +105,7 @@ jobs:
     timeout-minutes: 15
     needs: [build]
     env:
-      GOTOOLCHAIN: local
+      GOTOOLCHAIN: go1.26.1
     steps:
       - uses: actions/checkout@v4
 
@@ -131,7 +131,7 @@ jobs:
     timeout-minutes: 15
     needs: [build]
     env:
-      GOTOOLCHAIN: local
+      GOTOOLCHAIN: go1.26.1
     steps:
       - uses: actions/checkout@v4
 
@@ -151,7 +151,7 @@ jobs:
     timeout-minutes: 10
     needs: [build]
     env:
-      GOTOOLCHAIN: local
+      GOTOOLCHAIN: go1.26.1
     steps:
       - uses: actions/checkout@v4
 
@@ -163,9 +163,11 @@ jobs:
           go-version: ${{ needs.build.outputs.go-version }}
 
       - name: Run Gosec Security Scanner
-        uses: securego/gosec@master
-        with:
-          args: -exclude-generated ./...
+        shell: bash
+        run: |
+          set -euo pipefail
+          go install github.com/securego/gosec/v2/cmd/gosec@${{ needs.build.outputs.gosec-version }}
+          gosec -exclude-generated ./...
 
   integration:
     name: Integration Tests
@@ -173,7 +175,7 @@ jobs:
     timeout-minutes: 10
     needs: [build]
     env:
-      GOTOOLCHAIN: local
+      GOTOOLCHAIN: go1.26.1
     steps:
       - uses: actions/checkout@v4
 

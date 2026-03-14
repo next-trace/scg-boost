@@ -38,22 +38,15 @@ func RegisterProjectResources(s ToolAdder, opt ProjectResourceOptions, projectSu
 	}
 
 	// scg://project/claude
-	if err := s.AddResource(mcp.Resource{Name: "scg://project/claude"}, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-		root, err := os.OpenRoot(opt.Root)
-		if err != nil {
-			return nil, fmt.Errorf("open root %s: %w", opt.Root, err)
-		}
-		defer func() {
-			_ = root.Close()
-		}()
-
-		p := filepath.Join(".claude", "CLAUDE.md")
-		b, err := root.ReadFile(p)
-		if err != nil {
-			return nil, fmt.Errorf("read %s: %w", filepath.Join(opt.Root, p), err)
-		}
-		return []mcp.ResourceContents{mcp.TextResourceContents{URI: req.Params.URI, MIMEType: "text/markdown", Text: string(b)}}, nil
-	}); err != nil {
+	if err := registerMarkdownResource(s, "scg://project/claude", opt.Root, filepath.Join(".claude", "CLAUDE.md")); err != nil {
+		return err
+	}
+	// scg://project/codex
+	if err := registerMarkdownResource(s, "scg://project/codex", opt.Root, filepath.Join(".codex", "CODEX.md")); err != nil {
+		return err
+	}
+	// scg://project/gemini
+	if err := registerMarkdownResource(s, "scg://project/gemini", opt.Root, filepath.Join(".gemini", "GEMINI.md")); err != nil {
 		return err
 	}
 
@@ -88,4 +81,22 @@ func RegisterProjectResources(s ToolAdder, opt ProjectResourceOptions, projectSu
 	}
 
 	return nil
+}
+
+func registerMarkdownResource(s ToolAdder, uri string, rootPath string, relPath string) error {
+	return s.AddResource(mcp.Resource{Name: uri}, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		root, err := os.OpenRoot(rootPath)
+		if err != nil {
+			return nil, fmt.Errorf("open root %s: %w", rootPath, err)
+		}
+		defer func() {
+			_ = root.Close()
+		}()
+
+		b, err := root.ReadFile(relPath)
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", filepath.Join(rootPath, relPath), err)
+		}
+		return []mcp.ResourceContents{mcp.TextResourceContents{URI: req.Params.URI, MIMEType: "text/markdown", Text: string(b)}}, nil
+	})
 }
