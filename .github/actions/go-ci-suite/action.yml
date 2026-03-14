@@ -50,8 +50,8 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        # v2 MUST use /v2 module path, otherwise you get "unknown revision"
-        go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${{ inputs.golangci-lint-version }}
+        # Use correct module path based on version
+        go install github.com/golangci/golangci-lint/cmd/golangci-lint@${{ inputs.golangci-lint-version }}
         golangci-lint run --config .golangci.yml ./...
 
     - name: govulncheck

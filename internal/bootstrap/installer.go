@@ -82,49 +82,66 @@ func installFromPath(templates fs.FS, srcRoot string, opt InstallOptions) error 
 		_ = root.Close()
 	}()
 
-	dstRootRel := ".claude"
-	dstRootAbs := filepath.Join(opt.TargetDir, dstRootRel)
-	if st, err := root.Stat(dstRootRel); err == nil && st.IsDir() && !opt.Force {
-		return fmt.Errorf("%s already exists (use --force to overwrite)", dstRootAbs)
-	}
-	if err := root.MkdirAll(dstRootRel, 0o750); err != nil {
-		return fmt.Errorf("mkdir %s: %w", dstRootAbs, err)
-	}
+	// Install .claude, .gemini, and .codex if they exist in templates
+	clientDirs := []string{".claude", ".gemini", ".codex"}
+	baseSrcRoot := filepath.Dir(srcRoot)
 
-	return fs.WalkDir(templates, srcRoot, func(path string, d fs.DirEntry, err error) (retErr error) {
-		if err != nil {
-			return err
+	for _, dir := range clientDirs {
+		srcDir := filepath.ToSlash(filepath.Join(baseSrcRoot, dir))
+		if _, err := fs.Stat(templates, srcDir); err != nil {
+			continue
 		}
-		rel := strings.TrimPrefix(path, srcRoot)
-		rel = strings.TrimPrefix(rel, "/")
-		dst := filepath.Join(dstRootRel, filepath.FromSlash(rel))
-		if d.IsDir() {
-			return root.MkdirAll(dst, 0o750)
+
+		dstRootRel := dir
+		dstRootAbs := filepath.Join(opt.TargetDir, dstRootRel)
+		if st, err := root.Stat(dstRootRel); err == nil && st.IsDir() && !opt.Force {
+			fmt.Printf("Skipping %s (already exists, use --force to overwrite)\n", dstRootAbs)
+			continue
 		}
-		if err := root.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
-			return err
+
+		if err := root.MkdirAll(dstRootRel, 0o750); err != nil {
+			return fmt.Errorf("mkdir %s: %w", dstRootAbs, err)
 		}
-		srcFile, err := templates.Open(path)
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if cerr := srcFile.Close(); cerr != nil && retErr == nil {
-				retErr = cerr
+
+		err = fs.WalkDir(templates, srcDir, func(path string, d fs.DirEntry, err error) (retErr error) {
+			if err != nil {
+				return err
 			}
-		}()
-		out, err := root.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+			rel := strings.TrimPrefix(path, srcDir)
+			rel = strings.TrimPrefix(rel, "/")
+			dst := filepath.Join(dstRootRel, filepath.FromSlash(rel))
+			if d.IsDir() {
+				return root.MkdirAll(dst, 0o750)
+			}
+			if err := root.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
+				return err
+			}
+			srcFile, err := templates.Open(path)
+			if err != nil {
+				return err
+			}
+			defer func() {
+				if cerr := srcFile.Close(); cerr != nil && retErr == nil {
+					retErr = cerr
+				}
+			}()
+			out, err := root.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+			if err != nil {
+				return err
+			}
+			defer func() {
+				if cerr := out.Close(); cerr != nil && retErr == nil {
+					retErr = cerr
+				}
+			}()
+			if _, err := io.Copy(out, srcFile); err != nil {
+				return err
+			}
+			return nil
+		})
 		if err != nil {
 			return err
 		}
-		defer func() {
-			if cerr := out.Close(); cerr != nil && retErr == nil {
-				retErr = cerr
-			}
-		}()
-		if _, err := io.Copy(out, srcFile); err != nil {
-			return err
-		}
-		return nil
-	})
+	}
+	return nil
 }

@@ -103,6 +103,7 @@ func (s *ExecSandbox) Run(ctx context.Context, command string, args ...string) (
 	execCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	// #nosec G204 -- command and args are validated via allowlist and injection checks above
 	cmd := exec.CommandContext(execCtx, command, args...)
 
 	// Set working directory if specified
