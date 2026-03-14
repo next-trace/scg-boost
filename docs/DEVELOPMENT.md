@@ -67,7 +67,7 @@ go version | grep -q "go1.26.1" && echo "✓ Correct version" || echo "✗ Wrong
 
 # Check GOTOOLCHAIN setting
 echo $GOTOOLCHAIN
-# Should output: go1.26.1 or local
+# Should output: go1.26.1
 ```
 
 ## Local Development
