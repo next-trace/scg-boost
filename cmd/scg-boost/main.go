@@ -32,6 +32,8 @@ func run(args []string) int {
 	switch args[0] {
 	case "install":
 		return cmdInstall(args[1:])
+	case "update":
+		return cmdUpdate(args[1:])
 	case "config":
 		return cmdConfig(args[1:])
 	case "mcp", "serve":
@@ -69,7 +71,8 @@ Laravel Boost-style MCP + context bootstrap for SupplyChainGuard repos.
 
 Usage:
   scg-boost install [--root .] [--repo <name>] [--force]
-  scg-boost config --client claude|cursor|junie [--root .] [--name <server>]
+  scg-boost update [--root .] [--repo <name>]
+  scg-boost config --client claude|codex|gemini|cursor|junie [--root .] [--name <server>]
   scg-boost scan [--root .]
   scg-boost mcp [--root .] [--name <app>] [--version <v>]
   scg-boost tools [--json]
@@ -86,6 +89,7 @@ func cmdInstall(args []string) int {
 	fs.SetOutput(os.Stderr)
 	root := fs.String("root", ".", "repo root")
 	repoName := fs.String("repo", "", "repo name (defaults to folder name)")
+	nameFlag := fs.String("name", "", "mcp server name (defaults to folder name)")
 	force := fs.Bool("force", false, "overwrite existing .claude")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -125,17 +129,71 @@ func cmdInstall(args []string) int {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
 	}
-	if _, err := fmt.Fprintf(os.Stdout, "Installed .claude for %s in %s\n", name, abs); err != nil {
+
+	serverName := *nameFlag
+	if serverName == "" {
+		serverName = filepath.Base(abs)
+	}
+	if err := writeProjectMCPConfig(abs, serverName); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+
+	if _, err := fmt.Fprintf(os.Stdout, "Installed bootstrap assets for %s in %s (.claude/.codex/.gemini + .mcp.json)\n", name, abs); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
 	}
 	return 0
 }
 
+func cmdUpdate(args []string) int {
+	fs := flag.NewFlagSet("update", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	root := fs.String("root", ".", "repo root")
+	repoName := fs.String("repo", "", "repo name (defaults to folder name)")
+	nameFlag := fs.String("name", "", "mcp server name (defaults to folder name)")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	installArgs := []string{"--root", *root, "--force"}
+	if *repoName != "" {
+		installArgs = append(installArgs, "--repo", *repoName)
+	}
+	if *nameFlag != "" {
+		installArgs = append(installArgs, "--name", *nameFlag)
+	}
+
+	return cmdInstall(installArgs)
+}
+
+func writeProjectMCPConfig(root string, serverName string) error {
+	configPath := filepath.Join(root, ".mcp.json")
+	config := map[string]any{
+		"mcpServers": map[string]any{
+			"scg-boost": map[string]any{
+				"command": "scg-boost",
+				"args":    []string{"mcp", "--root", root, "--name", serverName},
+			},
+		},
+	}
+
+	body, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal .mcp.json: %w", err)
+	}
+	body = append(body, '\n')
+
+	if err := os.WriteFile(configPath, body, 0o600); err != nil {
+		return fmt.Errorf("write .mcp.json: %w", err)
+	}
+	return nil
+}
+
 func cmdConfig(args []string) int {
 	fs := flag.NewFlagSet("config", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	client := fs.String("client", "claude", "client: claude|cursor|junie")
+	client := fs.String("client", "claude", "client: claude|codex|gemini|cursor|junie")
 	root := fs.String("root", ".", "repo root")
 	name := fs.String("name", "", "server name (defaults to folder name)")
 	if err := fs.Parse(args); err != nil {
@@ -161,7 +219,7 @@ func cmdConfig(args []string) int {
 	exe = filepath.Clean(exe)
 
 	switch *client {
-	case "claude":
+	case "claude", "codex", "gemini":
 		if _, err := fmt.Fprintf(os.Stdout, `{"mcpServers": {"scg-boost": {"command": %q, "args": ["mcp", "--root", %q, "--name", %q]}}}\n`, exe, abs, serverName); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			return 1
@@ -317,22 +375,26 @@ func cmdValidate(args []string) int {
 
 	issues := []string{}
 
-	// Check for .claude directory
-	claudeDir := filepath.Join(abs, ".claude")
-	if _, err := os.Stat(claudeDir); os.IsNotExist(err) {
-		issues = append(issues, "missing .claude directory (run 'scg-boost install')")
-	} else {
-		// Check for CLAUDE.md
-		if _, err := os.Stat(filepath.Join(claudeDir, "CLAUDE.md")); os.IsNotExist(err) {
-			issues = append(issues, "missing .claude/CLAUDE.md")
-		}
-		// Check for agents directory
-		if _, err := os.Stat(filepath.Join(claudeDir, "agents")); os.IsNotExist(err) {
-			issues = append(issues, "missing .claude/agents directory")
-		}
-		// Check for commands directory
-		if _, err := os.Stat(filepath.Join(claudeDir, "commands")); os.IsNotExist(err) {
-			issues = append(issues, "missing .claude/commands directory")
+	if _, err := os.Stat(filepath.Join(abs, ".mcp.json")); os.IsNotExist(err) {
+		issues = append(issues, "missing .mcp.json (run 'scg-boost install' or 'scg-boost update')")
+	}
+
+	checks := []struct {
+		path string
+		note string
+	}{
+		{path: filepath.Join(abs, ".claude"), note: "missing .claude directory"},
+		{path: filepath.Join(abs, ".claude", "CLAUDE.md"), note: "missing .claude/CLAUDE.md"},
+		{path: filepath.Join(abs, ".claude", "agents"), note: "missing .claude/agents directory"},
+		{path: filepath.Join(abs, ".claude", "commands"), note: "missing .claude/commands directory"},
+		{path: filepath.Join(abs, ".codex"), note: "missing .codex directory"},
+		{path: filepath.Join(abs, ".codex", "CODEX.md"), note: "missing .codex/CODEX.md"},
+		{path: filepath.Join(abs, ".gemini"), note: "missing .gemini directory"},
+		{path: filepath.Join(abs, ".gemini", "GEMINI.md"), note: "missing .gemini/GEMINI.md"},
+	}
+	for _, check := range checks {
+		if _, err := os.Stat(check.path); os.IsNotExist(err) {
+			issues = append(issues, check.note)
 		}
 	}
 
@@ -487,6 +549,9 @@ func cmdSkillsInstall(args []string) int {
 			fmt.Fprintln(os.Stderr, "warning: failed to write installed skills:", err)
 		}
 	}
+	if err := writeProjectMCPConfig(abs, filepath.Base(abs)); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to write .mcp.json: %v\n", err)
+	}
 
 	fmt.Printf("Installed skill %q in %s\n", *skillName, abs)
 	return 0
@@ -578,6 +643,9 @@ func cmdSkillsSync(args []string) int {
 		if err := saveInstalledState(abs, state); err != nil {
 			fmt.Fprintln(os.Stderr, "warning: failed to write installed skills:", err)
 		}
+	}
+	if err := writeProjectMCPConfig(abs, filepath.Base(abs)); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to write .mcp.json: %v\n", err)
 	}
 
 	fmt.Printf("Synced skill %q in %s\n", current.Name, abs)

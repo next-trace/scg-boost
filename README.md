@@ -1,11 +1,11 @@
 # SCG-Boost
 
-SCG-Boost is the SupplyChainGuard equivalent of **Laravel Boost**: a **per-repo** bootstrapper + MCP server that makes Claude / Junie / Cursor behave like a senior SCG engineer instead of hallucinating.
+SCG-Boost is the SupplyChainGuard equivalent of **Laravel Boost**: a **per-repo** bootstrapper + MCP server that makes Claude / Codex / Gemini (and other MCP-capable clients) behave like a senior SCG engineer instead of hallucinating.
 
 It does two things:
 
-1) **Bootstrap context** in your repo: `.claude/` with `CLAUDE.md`, subagents, and commands.
-2) **Serve MCP over stdio** so clients can query: project summary, repo tree, CLAUDE.md, and SCG guidelines.
+1) **Bootstrap context** in your repo: `.claude/`, `.codex/`, `.gemini/` plus `.mcp.json`.
+2) **Serve MCP over stdio** so clients can query: project summary, repo tree, AI guidance files, and SCG guidelines.
 
 ## Requirements
 
@@ -22,15 +22,19 @@ It does two things:
 go install github.com/next-trace/scg-boost/cmd/scg-boost@latest
 ```
 
-### 2) Generate repo context
+### 2) Install or update repo context
 
 From the repo root:
 
 ```sh
 scg-boost install
+# Later, refresh to latest bundled templates + mcp wiring
+scg-boost update
 ```
 
-### 3) Connect your AI client to the MCP server
+`install`/`update` writes `.mcp.json` in the repo root for project-local MCP detection.
+
+### 3) Optional: print manual client config
 
 Run:
 
@@ -38,7 +42,7 @@ Run:
 scg-boost config --client claude
 ```
 
-Copy the JSON it prints into your client config. Then restart the client.
+Use this when you need manual wiring. In normal flow, `.mcp.json` is already generated.
 
 ## Verify
 
@@ -48,6 +52,8 @@ In your AI assistant, call:
 - `scg://project/summary` (resource)
 - `scg://project/tree` (resource)
 - `scg://project/claude` (resource)
+- `scg://project/codex` (resource)
+- `scg://project/gemini` (resource)
 
 If you can't see resources, you wired the MCP server wrong. Fix your client config.
 
