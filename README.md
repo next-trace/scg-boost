@@ -10,7 +10,7 @@ It does two things:
 ## Requirements
 
 - **Go 1.26.1+** (required for stdlib security fixes)
-- golangci-lint 1.62.2+
+- golangci-lint 2.11.3+
 - govulncheck 1.1.4+
 - gosec 2.22.2+
 
