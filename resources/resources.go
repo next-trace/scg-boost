@@ -18,6 +18,8 @@ var schemasFS embed.FS
 //go:embed bootstrap_templates/_PACK_README.md
 //go:embed bootstrap_templates/_PACK_PLAN.md
 //go:embed bootstrap_templates/**/.claude/**
+//go:embed bootstrap_templates/**/.gemini/**
+//go:embed bootstrap_templates/**/.codex/**
 //go:embed bootstrap_templates/*/skill.json
 var bootstrapFS embed.FS
 

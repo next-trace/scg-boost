@@ -7,6 +7,13 @@ It does two things:
 1) **Bootstrap context** in your repo: `.claude/` with `CLAUDE.md`, subagents, and commands.
 2) **Serve MCP over stdio** so clients can query: project summary, repo tree, CLAUDE.md, and SCG guidelines.
 
+## Requirements
+
+- **Go 1.26.1+** (required for stdlib security fixes)
+- golangci-lint 1.62.2+
+- govulncheck 1.1.4+
+- gosec 2.22.2+
+
 ## Quick Start
 
 ### 1) Install the CLI
@@ -112,10 +119,25 @@ func main() {
 
 ## Development
 
+### Prerequisites
+
+Ensure you have the required Go version and tools:
+
+```sh
+# Check Go version
+go version  # Should be 1.26.1 or higher
+
+# Install development tools (automated)
+./scg doctor
+```
+
 ### Running Tests
 
 ```sh
-# Unit tests
+# Full CI pipeline (recommended)
+./scg ci
+
+# Unit tests only
 go test ./...
 
 # With race detector
@@ -130,6 +152,16 @@ go test -tags=integration ./...
 ```sh
 go build -o scg-boost ./cmd/scg-boost
 ./scg-boost version
+```
+
+### CI Commands
+
+```sh
+./scg doctor    # Check prerequisites
+./scg ci        # Run full CI pipeline
+./scg lint      # Run linter only
+./scg test      # Run tests only
+./scg guards    # Run custom guards
 ```
 
 See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for complete development guide.
