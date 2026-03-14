@@ -75,7 +75,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          EXPECTED="1.25.7"
+          EXPECTED="1.26.1"
           ACTUAL=$(go version | awk '{print $3}' | sed 's/go//')
           echo "Expected Go: $EXPECTED"
           echo "Actual Go: $ACTUAL"
