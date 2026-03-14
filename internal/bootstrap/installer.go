@@ -35,15 +35,18 @@ func Install(templates fs.FS, opt InstallOptions) error {
 		opt.RepoName = filepath.Base(opt.TargetDir)
 	}
 
-	// Ensure repo template exists; fallback to _generic
-	srcRoot := filepath.ToSlash(filepath.Join(opt.RepoName, ".claude"))
-	if _, err := fs.Stat(templates, srcRoot); err != nil {
-		srcRoot = "_generic/.claude"
-		if _, err2 := fs.Stat(templates, srcRoot); err2 != nil {
+	// Ensure repo folder exists in templates; fallback to _generic
+	srcRepo := opt.RepoName
+	if _, err := fs.Stat(templates, srcRepo); err != nil {
+		srcRepo = "_generic"
+		if _, err2 := fs.Stat(templates, srcRepo); err2 != nil {
 			return fmt.Errorf("missing embedded templates: %w", err2)
 		}
 	}
 
+	// We pass the .claude path because the installer expects it as a starting point,
+	// but it will also look for sibling .gemini and .codex.
+	srcRoot := filepath.ToSlash(filepath.Join(srcRepo, ".claude"))
 	return installFromPath(templates, srcRoot, opt)
 }
 
