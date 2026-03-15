@@ -132,8 +132,12 @@ func installFromPath(templates fs.FS, srcRoot string, opt InstallOptions) error 
 					return err
 				}
 				if !opt.Force {
-					if _, err := root.Stat(dst); err == nil {
+					_, err := root.Stat(dst)
+					if err == nil {
 						return nil
+					}
+					if !errors.Is(err, fs.ErrNotExist) {
+						return err
 					}
 				}
 				srcFile, err := templates.Open(path)

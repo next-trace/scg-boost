@@ -130,17 +130,15 @@ jobs:
         shell: bash
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          CODECOV_CLI_VERSION: "11.2.1"
         run: |
           set -euo pipefail
-          curl -fsSL https://cli.codecov.io/latest/linux/codecov -o codecov
-          curl -fsSL https://cli.codecov.io/latest/linux/codecov.SHA256SUM -o codecov.SHA256SUM
-          sha256sum -c codecov.SHA256SUM
-          chmod +x codecov
+          python3 -m pip install --disable-pip-version-check --no-input "codecov-cli==${CODECOV_CLI_VERSION}"
 
           if [[ -n "${CODECOV_TOKEN:-}" ]]; then
-            ./codecov upload-process -f coverage.txt -t "${CODECOV_TOKEN}" || true
+            codecovcli upload-process -f coverage.txt -t "${CODECOV_TOKEN}" || true
           else
-            ./codecov upload-process -f coverage.txt || true
+            codecovcli upload-process -f coverage.txt || true
           fi
 
   quality:

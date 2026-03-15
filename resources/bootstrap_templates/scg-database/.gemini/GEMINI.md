@@ -1,4 +1,4 @@
-also# GEMINI.md — scg-boost
+# GEMINI.md — scg-boost
 
 This file is the **single source of truth** for how Gemini must work in this repository.
 
