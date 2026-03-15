@@ -6,8 +6,15 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   build:
@@ -23,7 +30,7 @@ jobs:
       gosec-version: ${{ steps.scg-vars.outputs.gosec-version }}
       coverage-threshold: ${{ steps.scg-vars.outputs.coverage-threshold }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Verify LICENSE is present and complete
         shell: bash
@@ -107,7 +114,7 @@ jobs:
     env:
       GOTOOLCHAIN: go1.26.1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Load SCG variables
         uses: ./.github/actions/load-scg-vars
@@ -120,10 +127,21 @@ jobs:
         run: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
-        with:
-          files: ./coverage.txt
-          fail_ci_if_error: false
+        shell: bash
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        run: |
+          set -euo pipefail
+          curl -fsSL https://cli.codecov.io/latest/linux/codecov -o codecov
+          curl -fsSL https://cli.codecov.io/latest/linux/codecov.SHA256SUM -o codecov.SHA256SUM
+          sha256sum -c codecov.SHA256SUM
+          chmod +x codecov
+
+          if [[ -n "${CODECOV_TOKEN:-}" ]]; then
+            ./codecov upload-process -f coverage.txt -t "${CODECOV_TOKEN}" || true
+          else
+            ./codecov upload-process -f coverage.txt || true
+          fi
 
   quality:
     name: Quality (lint + security + guards)
@@ -133,7 +151,7 @@ jobs:
     env:
       GOTOOLCHAIN: go1.26.1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Load SCG variables
         uses: ./.github/actions/load-scg-vars
@@ -153,7 +171,7 @@ jobs:
     env:
       GOTOOLCHAIN: go1.26.1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Load SCG variables
         uses: ./.github/actions/load-scg-vars
@@ -177,7 +195,7 @@ jobs:
     env:
       GOTOOLCHAIN: go1.26.1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Load SCG variables
         uses: ./.github/actions/load-scg-vars
