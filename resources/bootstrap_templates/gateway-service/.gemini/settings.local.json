@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go doc:*)",
+      "Bash(go build:*)",
+      "Bash(go mod tidy:*)",
+      "Bash(go test:*)",
+      "Bash(chmod:*)",
+      "Bash(./scg doctor:*)",
+      "Bash(./scg guards:*)",
+      "Bash(./scg lint:*)",
+      "Bash(echo:*)",
+      "Bash(go list:*)",
+      "Bash(test:*)",
+      "Bash(done)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(./cmd/scg-boost/scg-boost:*)",
+      "Bash(./scg-boost help:*)",
+      "Bash(./scg-boost skills:list:*)",
+      "Bash(./scg-boost skills:sync:*)",
+      "Bash(./scg-boost install:*)",
+      "Bash(./scg-boost version:*)",
+      "Bash(find:*)",
+      "Bash(xargs -I {} sh -c 'echo \"\"=== {} ===\"\" && cat {}')",
+      "Bash(/tmp/claude-1000/-home-hossein-Projects-Hossein-Go-NextTrace-scg-boost/2e39463f-e50c-4e4e-8e63-9ac053ed4f69/scratchpad/update_skills.sh:*)"
+    ]
+  }
+}

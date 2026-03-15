@@ -32,3 +32,9 @@ Thumbs.db
 **/.codex/
 **/.claude/
 **/.gemini/
+!resources/bootstrap_templates/**/.codex/
+!resources/bootstrap_templates/**/.codex/**
+!resources/bootstrap_templates/**/.claude/
+!resources/bootstrap_templates/**/.claude/**
+!resources/bootstrap_templates/**/.gemini/
+!resources/bootstrap_templates/**/.gemini/**

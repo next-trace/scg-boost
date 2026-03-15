@@ -1,16 +1,21 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	iofs "io/fs"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/next-trace/scg-boost/boost"
 	"github.com/next-trace/scg-boost/internal/bootstrap"
@@ -70,8 +75,8 @@ func usage() {
 Laravel Boost-style MCP + context bootstrap for SupplyChainGuard repos.
 
 Usage:
-  scg-boost install [--root .] [--repo <name>] [--force]
-  scg-boost update [--root .] [--repo <name>]
+  scg-boost install [--root .] [--repo <name>] [--preset boost|mcp] [--force] [--check-mcp-up=true]
+  scg-boost update [--root .] [--repo <name>] [--preset boost|mcp] [--check-mcp-up=true]
   scg-boost config --client claude|codex|gemini|cursor|junie [--root .] [--name <server>]
   scg-boost scan [--root .]
   scg-boost mcp [--root .] [--name <app>] [--version <v>]
@@ -89,8 +94,10 @@ func cmdInstall(args []string) int {
 	fs.SetOutput(os.Stderr)
 	root := fs.String("root", ".", "repo root")
 	repoName := fs.String("repo", "", "repo name (defaults to folder name)")
+	preset := fs.String("preset", "", "template preset override: boost|mcp")
 	nameFlag := fs.String("name", "", "mcp server name (defaults to folder name)")
 	force := fs.Bool("force", false, "overwrite existing .claude")
+	checkMCPUp := fs.Bool("check-mcp-up", true, "run MCP startup probe after writing .mcp.json")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -103,6 +110,12 @@ func cmdInstall(args []string) int {
 	name := *repoName
 	if name == "" {
 		name = filepath.Base(abs)
+	}
+	if mapped, ok, err := presetRepoName(*preset); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 2
+	} else if ok {
+		name = mapped
 	}
 
 	tpl, err := resources.BootstrapTemplates()
@@ -138,6 +151,16 @@ func cmdInstall(args []string) int {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
 	}
+	if *checkMCPUp {
+		if err := probeMCPServerUp(abs, serverName); err != nil {
+			fmt.Fprintln(os.Stderr, "error: mcp up check failed:", err)
+			return 1
+		}
+		if _, err := fmt.Fprintln(os.Stdout, "MCP up check: ok"); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			return 1
+		}
+	}
 
 	if _, err := fmt.Fprintf(os.Stdout, "Installed bootstrap assets for %s in %s (.claude/.codex/.gemini + .mcp.json)\n", name, abs); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
@@ -151,7 +174,9 @@ func cmdUpdate(args []string) int {
 	fs.SetOutput(os.Stderr)
 	root := fs.String("root", ".", "repo root")
 	repoName := fs.String("repo", "", "repo name (defaults to folder name)")
+	preset := fs.String("preset", "", "template preset override: boost|mcp")
 	nameFlag := fs.String("name", "", "mcp server name (defaults to folder name)")
+	checkMCPUp := fs.Bool("check-mcp-up", true, "run MCP startup probe after writing .mcp.json")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -160,11 +185,65 @@ func cmdUpdate(args []string) int {
 	if *repoName != "" {
 		installArgs = append(installArgs, "--repo", *repoName)
 	}
+	if *preset != "" {
+		installArgs = append(installArgs, "--preset", *preset)
+	}
 	if *nameFlag != "" {
 		installArgs = append(installArgs, "--name", *nameFlag)
 	}
+	installArgs = append(installArgs, fmt.Sprintf("--check-mcp-up=%t", *checkMCPUp))
 
 	return cmdInstall(installArgs)
+}
+
+func presetRepoName(preset string) (string, bool, error) {
+	switch preset {
+	case "":
+		return "", false, nil
+	case "boost":
+		return "scg-boost", true, nil
+	case "mcp":
+		return "scg-mcp", true, nil
+	default:
+		return "", false, fmt.Errorf("invalid --preset %q (allowed: boost|mcp)", preset)
+	}
+}
+
+func probeMCPServerUp(root string, name string) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve executable: %w", err)
+	}
+
+	// #nosec G204 -- executable path and args are internally constructed.
+	cmd := exec.Command(exe, "mcp", "--root", root, "--name", name, "--version", boost.Version)
+	cmd.Stdout = io.Discard
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("open probe stdin: %w", err)
+	}
+	if err := cmd.Start(); err != nil {
+		_ = stdin.Close()
+		return fmt.Errorf("start probe: %w", err)
+	}
+
+	time.Sleep(400 * time.Millisecond)
+	if err := cmd.Process.Signal(syscall.Signal(0)); err != nil {
+		_ = stdin.Close()
+		_ = cmd.Wait()
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("mcp process not running: %s", msg)
+	}
+
+	_ = stdin.Close()
+	_ = cmd.Process.Kill()
+	_ = cmd.Wait()
+	return nil
 }
 
 func writeProjectMCPConfig(root string, serverName string) error {
@@ -374,9 +453,11 @@ func cmdValidate(args []string) int {
 	}
 
 	issues := []string{}
-
-	if _, err := os.Stat(filepath.Join(abs, ".mcp.json")); os.IsNotExist(err) {
+	mcpPath := filepath.Join(abs, ".mcp.json")
+	if _, err := os.Stat(mcpPath); os.IsNotExist(err) {
 		issues = append(issues, "missing .mcp.json (run 'scg-boost install' or 'scg-boost update')")
+	} else {
+		issues = append(issues, validateMCPJSON(mcpPath)...)
 	}
 
 	checks := []struct {
@@ -389,18 +470,19 @@ func cmdValidate(args []string) int {
 		{path: filepath.Join(abs, ".claude", "commands"), note: "missing .claude/commands directory"},
 		{path: filepath.Join(abs, ".codex"), note: "missing .codex directory"},
 		{path: filepath.Join(abs, ".codex", "CODEX.md"), note: "missing .codex/CODEX.md"},
+		{path: filepath.Join(abs, ".codex", "agents"), note: "missing .codex/agents directory"},
+		{path: filepath.Join(abs, ".codex", "commands"), note: "missing .codex/commands directory"},
+		{path: filepath.Join(abs, ".codex", "skills"), note: "missing .codex/skills directory"},
 		{path: filepath.Join(abs, ".gemini"), note: "missing .gemini directory"},
 		{path: filepath.Join(abs, ".gemini", "GEMINI.md"), note: "missing .gemini/GEMINI.md"},
+		{path: filepath.Join(abs, ".gemini", "agents"), note: "missing .gemini/agents directory"},
+		{path: filepath.Join(abs, ".gemini", "commands"), note: "missing .gemini/commands directory"},
+		{path: filepath.Join(abs, ".gemini", "skills"), note: "missing .gemini/skills directory"},
 	}
 	for _, check := range checks {
 		if _, err := os.Stat(check.path); os.IsNotExist(err) {
 			issues = append(issues, check.note)
 		}
-	}
-
-	// Check for go.mod (Go project)
-	if _, err := os.Stat(filepath.Join(abs, "go.mod")); os.IsNotExist(err) {
-		issues = append(issues, "no go.mod found (not a Go project?)")
 	}
 
 	if len(issues) == 0 {
@@ -413,6 +495,47 @@ func cmdValidate(args []string) int {
 		fmt.Printf("  - %s\n", issue)
 	}
 	return 1
+}
+
+func validateMCPJSON(path string) []string {
+	issues := []string{}
+	// #nosec G304 -- path is caller-controlled from validated project root and fixed filename (.mcp.json).
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return []string{fmt.Sprintf("unable to read .mcp.json: %v", err)}
+	}
+
+	var cfg struct {
+		MCPServers map[string]struct {
+			Command string   `json:"command"`
+			Args    []string `json:"args"`
+		} `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(body, &cfg); err != nil {
+		return []string{fmt.Sprintf("invalid .mcp.json: %v", err)}
+	}
+	if len(cfg.MCPServers) == 0 {
+		return []string{"invalid .mcp.json: missing mcpServers entries"}
+	}
+
+	server, ok := cfg.MCPServers["scg-boost"]
+	if !ok {
+		return []string{"invalid .mcp.json: missing mcpServers.scg-boost"}
+	}
+	if strings.TrimSpace(server.Command) == "" {
+		issues = append(issues, "invalid .mcp.json: mcpServers.scg-boost.command is empty")
+	}
+	hasMCPArg := false
+	for _, arg := range server.Args {
+		if arg == "mcp" {
+			hasMCPArg = true
+			break
+		}
+	}
+	if !hasMCPArg {
+		issues = append(issues, "invalid .mcp.json: mcpServers.scg-boost.args must include \"mcp\"")
+	}
+	return issues
 }
 
 func cmdSkillsList(args []string) int {

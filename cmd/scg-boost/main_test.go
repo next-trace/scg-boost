@@ -11,7 +11,7 @@ func TestCmdInstallWritesMCPConfig(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	code := cmdInstall([]string{"--root", root, "--repo", "_generic", "--force", "--name", "demo-server"})
+	code := cmdInstall([]string{"--root", root, "--repo", "_generic", "--force", "--name", "demo-server", "--check-mcp-up=false"})
 	if code != 0 {
 		t.Fatalf("cmdInstall() = %d, want 0", code)
 	}
@@ -57,12 +57,54 @@ func TestCmdUpdateWritesMCPConfig(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	code := cmdUpdate([]string{"--root", root, "--repo", "_generic", "--name", "updated-server"})
+	code := cmdUpdate([]string{"--root", root, "--repo", "_generic", "--name", "updated-server", "--check-mcp-up=false"})
 	if code != 0 {
 		t.Fatalf("cmdUpdate() = %d, want 0", code)
 	}
 
 	if _, err := os.Stat(filepath.Join(root, ".mcp.json")); err != nil {
 		t.Fatalf("missing .mcp.json after update: %v", err)
+	}
+}
+
+func TestCmdInstall_WithPresetBoost(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	code := cmdInstall([]string{"--root", root, "--preset", "boost", "--force", "--check-mcp-up=false"})
+	if code != 0 {
+		t.Fatalf("cmdInstall() = %d, want 0", code)
+	}
+
+	if _, err := os.Stat(filepath.Join(root, ".claude", "commands")); err != nil {
+		t.Fatalf("missing .claude/commands: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".codex", "skills")); err != nil {
+		t.Fatalf("missing .codex/skills: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".gemini", "skills")); err != nil {
+		t.Fatalf("missing .gemini/skills: %v", err)
+	}
+}
+
+func TestCmdInstall_InvalidPreset(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	code := cmdInstall([]string{"--root", root, "--preset", "unknown", "--check-mcp-up=false"})
+	if code != 2 {
+		t.Fatalf("cmdInstall() = %d, want 2", code)
+	}
+}
+
+func TestCmdValidate_SuccessAfterInstall(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if code := cmdInstall([]string{"--root", root, "--repo", "_generic", "--force", "--name", "demo-server", "--check-mcp-up=false"}); code != 0 {
+		t.Fatalf("cmdInstall() = %d, want 0", code)
+	}
+	if code := cmdValidate([]string{"--root", root}); code != 0 {
+		t.Fatalf("cmdValidate() = %d, want 0", code)
 	}
 }
