@@ -272,13 +272,6 @@ func renderEnvDist(repoName string) string {
 
 # Required for GitHub PR/comment/review collection helpers.
 GITHUB_TOKEN=
-
-# Optional: override repository auto-detection.
-GITHUB_OWNER=
-GITHUB_REPO=
-
-# Optional: for GitHub Enterprise. Leave default for github.com.
-GITHUB_API_BASE=https://api.github.com
 `, repoName)
 }
 
@@ -286,9 +279,6 @@ func renderEnvLocal(repoName string) string {
 	return fmt.Sprintf(`# Local environment for %s (kept local; do not commit secrets).
 # Fill at least GITHUB_TOKEN if you use GitHub review/PR helpers.
 GITHUB_TOKEN=
-GITHUB_OWNER=
-GITHUB_REPO=
-GITHUB_API_BASE=https://api.github.com
 `, repoName)
 }
 
