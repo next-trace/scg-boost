@@ -142,6 +142,10 @@ func cmdInstall(args []string) int {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
 	}
+	if err := ensureAssistantGitignore(abs); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
 
 	serverName := *nameFlag
 	if serverName == "" {
@@ -207,6 +211,47 @@ func presetRepoName(preset string) (string, bool, error) {
 	default:
 		return "", false, fmt.Errorf("invalid --preset %q (allowed: boost|mcp)", preset)
 	}
+}
+
+func ensureAssistantGitignore(root string) error {
+	gitignorePath := filepath.Join(root, ".gitignore")
+	// #nosec G304 -- path is scoped to validated project root.
+	body, err := os.ReadFile(gitignorePath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("read .gitignore: %w", err)
+	}
+
+	linesToEnsure := []string{
+		".claude/",
+		".codex/",
+		".gemini/",
+	}
+
+	content := string(body)
+	toAppend := make([]string, 0, len(linesToEnsure))
+	for _, line := range linesToEnsure {
+		if !strings.Contains(content, line) {
+			toAppend = append(toAppend, line)
+		}
+	}
+	if len(toAppend) == 0 {
+		return nil
+	}
+
+	var b strings.Builder
+	b.WriteString(content)
+	if len(content) > 0 && !strings.HasSuffix(content, "\n") {
+		b.WriteString("\n")
+	}
+	b.WriteString("\n# scg-boost local AI context\n")
+	for _, line := range toAppend {
+		b.WriteString(line + "\n")
+	}
+
+	if err := os.WriteFile(gitignorePath, []byte(b.String()), 0o600); err != nil {
+		return fmt.Errorf("write .gitignore: %w", err)
+	}
+	return nil
 }
 
 func probeMCPServerUp(root string, name string) error {

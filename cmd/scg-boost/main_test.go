@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -50,6 +51,17 @@ func TestCmdInstallWritesMCPConfig(t *testing.T) {
 	}
 	if len(server.Args) < 5 {
 		t.Fatalf("args too short: %#v", server.Args)
+	}
+
+	gitignore, err := os.ReadFile(filepath.Join(root, ".gitignore"))
+	if err != nil {
+		t.Fatalf("missing .gitignore: %v", err)
+	}
+	content := string(gitignore)
+	for _, line := range []string{".claude/", ".codex/", ".gemini/"} {
+		if !containsLine(content, line) {
+			t.Fatalf(".gitignore missing %q", line)
+		}
 	}
 }
 
@@ -107,4 +119,13 @@ func TestCmdValidate_SuccessAfterInstall(t *testing.T) {
 	if code := cmdValidate([]string{"--root", root}); code != 0 {
 		t.Fatalf("cmdValidate() = %d, want 0", code)
 	}
+}
+
+func containsLine(content, line string) bool {
+	for _, l := range strings.Split(content, "\n") {
+		if l == line {
+			return true
+		}
+	}
+	return false
 }
