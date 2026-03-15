@@ -1,5 +1,11 @@
-# /plan $1
+# /plan <task>
 
-when I do ask you to do any task, first plan it and generate a plan-<random-number or timestamp>.md in the .plan folder inside (create .plan folder if not exist) root folder of theproject.
-as soon as you start progressing and do any step, mark that step in the plan as completed, in this way if the context is missed, you have the plan files in the.claude→plan folder, 
-and you could continue the next step from it. as soon as all of them are done, you should test it and make sure its ready, and then you should remove the that plan.md ok.
+Before implementation, create a plan file at `.plan/plan-<timestamp>.md` in the repository root.
+If `.plan/` does not exist, create it.
+
+Workflow:
+1. Break the task into concrete steps.
+2. Mark steps as completed as you progress.
+3. If context is lost, resume from the plan file.
+4. After implementation, run relevant tests and validations.
+5. When everything is complete and verified, delete the plan file.
