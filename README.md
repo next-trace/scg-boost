@@ -34,16 +34,9 @@ scg-boost update
 
 `install`/`update` writes `.mcp.json` in the repo root for project-local MCP detection.
 It also runs an MCP startup probe by default and prints `MCP up check: ok` when healthy.
-
-Explicit presets for bootstrap packs:
-
-```sh
-# Force scg-boost template pack into current repo
-scg-boost install --preset boost
-
-# Force scg-mcp template pack into current repo
-scg-boost install --preset mcp
-```
+Bootstrap is repo-agnostic: it always installs the generic assistant pack and then
+adds destination-specific scaffolding (`.env.dist`, `.env`, and `bootstrap-survey` prompts
+under `.claude/.codex/.gemini/commands`) so each repo can be surveyed and tuned locally.
 
 ### 3) Optional: print manual client config
 

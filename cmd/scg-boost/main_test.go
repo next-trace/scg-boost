@@ -63,6 +63,22 @@ func TestCmdInstallWritesMCPConfig(t *testing.T) {
 			t.Fatalf(".gitignore missing %q", line)
 		}
 	}
+
+	if _, err := os.Stat(filepath.Join(root, ".env.dist")); err != nil {
+		t.Fatalf("missing .env.dist: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".env")); err != nil {
+		t.Fatalf("missing .env: %v", err)
+	}
+	for _, p := range []string{
+		filepath.Join(root, ".claude", "commands", "bootstrap-survey.md"),
+		filepath.Join(root, ".codex", "commands", "bootstrap-survey.md"),
+		filepath.Join(root, ".gemini", "commands", "bootstrap-survey.md"),
+	} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("missing bootstrap survey prompt %s: %v", p, err)
+		}
+	}
 }
 
 func TestCmdUpdateWritesMCPConfig(t *testing.T) {
@@ -79,7 +95,7 @@ func TestCmdUpdateWritesMCPConfig(t *testing.T) {
 	}
 }
 
-func TestCmdInstall_WithPresetBoost(t *testing.T) {
+func TestCmdInstall_DeprecatedPresetIgnored(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -96,16 +112,6 @@ func TestCmdInstall_WithPresetBoost(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, ".gemini", "skills")); err != nil {
 		t.Fatalf("missing .gemini/skills: %v", err)
-	}
-}
-
-func TestCmdInstall_InvalidPreset(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	code := cmdInstall([]string{"--root", root, "--preset", "unknown", "--check-mcp-up=false"})
-	if code != 2 {
-		t.Fatalf("cmdInstall() = %d, want 2", code)
 	}
 }
 

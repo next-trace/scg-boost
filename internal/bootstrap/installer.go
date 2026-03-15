@@ -33,12 +33,12 @@ type InstallOptions struct {
 	Force     bool
 }
 
-// Install copies the embedded .claude template set into the target repository.
+// Install copies the generic embedded assistant template set into the target repository.
 //
 // Rules:
 // - Writes only under <TargetDir>/.claude
 // - Refuses to overwrite without Force
-// - Uses repo-specific templates if present, otherwise falls back to _generic
+// - Uses repo-agnostic templates from _generic
 func Install(templates fs.FS, opt InstallOptions) error {
 	if opt.TargetDir == "" {
 		return errors.New("target dir is required")
@@ -48,22 +48,13 @@ func Install(templates fs.FS, opt InstallOptions) error {
 		return fmt.Errorf("abs target dir: %w", err)
 	}
 	opt.TargetDir = absTarget
-	if opt.RepoName == "" {
-		opt.RepoName = filepath.Base(opt.TargetDir)
-	}
-
-	// Ensure repo folder exists in templates; fallback to _generic
-	srcRepo := opt.RepoName
-	if _, err := fs.Stat(templates, srcRepo); err != nil {
-		srcRepo = "_generic"
-		if _, err2 := fs.Stat(templates, srcRepo); err2 != nil {
-			return fmt.Errorf("missing embedded templates: %w", err2)
-		}
+	if _, err := fs.Stat(templates, "_generic"); err != nil {
+		return fmt.Errorf("missing embedded templates: %w", err)
 	}
 
 	// We pass the .claude path because the installer expects it as a starting point,
 	// but it will also look for sibling .gemini and .codex.
-	srcRoot := filepath.ToSlash(filepath.Join(srcRepo, ".claude"))
+	srcRoot := filepath.ToSlash(filepath.Join("_generic", ".claude"))
 	return installFromPath(templates, srcRoot, opt)
 }
 
@@ -163,7 +154,12 @@ func installFromPath(templates fs.FS, srcRoot string, opt InstallOptions) error 
 						retErr = cerr
 					}
 				}()
-				if _, err := io.Copy(out, srcFile); err != nil {
+				content, err := io.ReadAll(srcFile)
+				if err != nil {
+					return err
+				}
+				content = renderTemplate(path, content, opt)
+				if _, err := out.Write(content); err != nil {
 					return err
 				}
 				return nil
@@ -187,6 +183,33 @@ func installFromPath(templates fs.FS, srcRoot string, opt InstallOptions) error 
 		}
 	}
 	return nil
+}
+
+func renderTemplate(srcPath string, content []byte, opt InstallOptions) []byte {
+	lower := strings.ToLower(srcPath)
+	switch {
+	case strings.HasSuffix(lower, ".md"),
+		strings.HasSuffix(lower, ".json"),
+		strings.HasSuffix(lower, ".txt"),
+		strings.HasSuffix(lower, ".yaml"),
+		strings.HasSuffix(lower, ".yml"):
+	default:
+		return content
+	}
+
+	repoName := strings.TrimSpace(opt.RepoName)
+	if repoName == "" {
+		repoName = filepath.Base(opt.TargetDir)
+	}
+	replacements := map[string]string{
+		"{{REPO_NAME}}": repoName,
+		"{{REPO_ROOT}}": opt.TargetDir,
+	}
+	out := string(content)
+	for placeholder, value := range replacements {
+		out = strings.ReplaceAll(out, placeholder, value)
+	}
+	return []byte(out)
 }
 
 func ensureDefaultFile(root *os.Root, relPath, content string) error {

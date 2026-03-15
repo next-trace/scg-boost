@@ -75,8 +75,8 @@ func usage() {
 Laravel Boost-style MCP + context bootstrap for SupplyChainGuard repos.
 
 Usage:
-  scg-boost install [--root .] [--repo <name>] [--preset boost|mcp] [--force] [--check-mcp-up=true]
-  scg-boost update [--root .] [--repo <name>] [--preset boost|mcp] [--check-mcp-up=true]
+  scg-boost install [--root .] [--force] [--name <server>] [--check-mcp-up=true]
+  scg-boost update [--root .] [--name <server>] [--check-mcp-up=true]
   scg-boost config --client claude|codex|gemini|cursor|junie [--root .] [--name <server>]
   scg-boost scan [--root .]
   scg-boost mcp [--root .] [--name <app>] [--version <v>]
@@ -93,8 +93,8 @@ func cmdInstall(args []string) int {
 	fs := flag.NewFlagSet("install", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	root := fs.String("root", ".", "repo root")
-	repoName := fs.String("repo", "", "repo name (defaults to folder name)")
-	preset := fs.String("preset", "", "template preset override: boost|mcp")
+	repoName := fs.String("repo", "", "deprecated: ignored (install is repo-agnostic)")
+	preset := fs.String("preset", "", "deprecated: ignored (install is repo-agnostic)")
 	nameFlag := fs.String("name", "", "mcp server name (defaults to folder name)")
 	force := fs.Bool("force", false, "overwrite existing .claude")
 	checkMCPUp := fs.Bool("check-mcp-up", true, "run MCP startup probe after writing .mcp.json")
@@ -107,15 +107,9 @@ func cmdInstall(args []string) int {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
 	}
-	name := *repoName
-	if name == "" {
-		name = filepath.Base(abs)
-	}
-	if mapped, ok, err := presetRepoName(*preset); err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		return 2
-	} else if ok {
-		name = mapped
+	repoBase := filepath.Base(abs)
+	if strings.TrimSpace(*repoName) != "" || strings.TrimSpace(*preset) != "" {
+		fmt.Fprintln(os.Stderr, "warning: --repo and --preset are deprecated for install/update and are ignored")
 	}
 
 	tpl, err := resources.BootstrapTemplates()
@@ -123,22 +117,7 @@ func cmdInstall(args []string) int {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
 	}
-
-	// Auto-detect repo type and suggest skill if --repo not specified
-	if *repoName == "" {
-		repoType := skills.DetectRepoType(abs)
-		reg, err := skills.Load(tpl)
-		if err == nil && reg.Count() > 0 {
-			matches := reg.MatchRepoType(repoType)
-			if len(matches) > 0 {
-				fmt.Fprintf(os.Stderr, "Detected repo type: %s\n", repoType)
-				fmt.Fprintf(os.Stderr, "Suggested skill: %s\n", matches[0].Name)
-				name = matches[0].Name
-			}
-		}
-	}
-
-	if err := bootstrap.Install(tpl, bootstrap.InstallOptions{RepoName: name, TargetDir: abs, Force: *force}); err != nil {
+	if err := bootstrap.Install(tpl, bootstrap.InstallOptions{RepoName: repoBase, TargetDir: abs, Force: *force}); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
 	}
@@ -146,10 +125,14 @@ func cmdInstall(args []string) int {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
 	}
+	if err := ensureBootstrapScaffold(abs, repoBase); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
 
 	serverName := *nameFlag
 	if serverName == "" {
-		serverName = filepath.Base(abs)
+		serverName = repoBase
 	}
 	if err := writeProjectMCPConfig(abs, serverName); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
@@ -166,7 +149,7 @@ func cmdInstall(args []string) int {
 		}
 	}
 
-	if _, err := fmt.Fprintf(os.Stdout, "Installed bootstrap assets for %s in %s (.claude/.codex/.gemini + .mcp.json)\n", name, abs); err != nil {
+	if _, err := fmt.Fprintf(os.Stdout, "Installed bootstrap assets in %s (.claude/.codex/.gemini + .mcp.json + bootstrap survey prompts + .env templates)\n", abs); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
 	}
@@ -177,8 +160,8 @@ func cmdUpdate(args []string) int {
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	root := fs.String("root", ".", "repo root")
-	repoName := fs.String("repo", "", "repo name (defaults to folder name)")
-	preset := fs.String("preset", "", "template preset override: boost|mcp")
+	repoName := fs.String("repo", "", "deprecated: ignored")
+	preset := fs.String("preset", "", "deprecated: ignored")
 	nameFlag := fs.String("name", "", "mcp server name (defaults to folder name)")
 	checkMCPUp := fs.Bool("check-mcp-up", true, "run MCP startup probe after writing .mcp.json")
 	if err := fs.Parse(args); err != nil {
@@ -186,10 +169,10 @@ func cmdUpdate(args []string) int {
 	}
 
 	installArgs := []string{"--root", *root, "--force"}
-	if *repoName != "" {
+	if strings.TrimSpace(*repoName) != "" {
 		installArgs = append(installArgs, "--repo", *repoName)
 	}
-	if *preset != "" {
+	if strings.TrimSpace(*preset) != "" {
 		installArgs = append(installArgs, "--preset", *preset)
 	}
 	if *nameFlag != "" {
@@ -198,19 +181,6 @@ func cmdUpdate(args []string) int {
 	installArgs = append(installArgs, fmt.Sprintf("--check-mcp-up=%t", *checkMCPUp))
 
 	return cmdInstall(installArgs)
-}
-
-func presetRepoName(preset string) (string, bool, error) {
-	switch preset {
-	case "":
-		return "", false, nil
-	case "boost":
-		return "scg-boost", true, nil
-	case "mcp":
-		return "scg-mcp", true, nil
-	default:
-		return "", false, fmt.Errorf("invalid --preset %q (allowed: boost|mcp)", preset)
-	}
 }
 
 func ensureAssistantGitignore(root string) error {
@@ -252,6 +222,104 @@ func ensureAssistantGitignore(root string) error {
 		return fmt.Errorf("write .gitignore: %w", err)
 	}
 	return nil
+}
+
+func ensureBootstrapScaffold(root, repoName string) error {
+	if err := os.MkdirAll(filepath.Join(root, ".scg"), 0o750); err != nil {
+		return fmt.Errorf("mkdir .scg: %w", err)
+	}
+
+	if err := ensureFileIfMissing(filepath.Join(root, ".env.dist"), renderEnvDist(repoName)); err != nil {
+		return err
+	}
+	if err := ensureFileIfMissing(filepath.Join(root, ".env"), renderEnvLocal(repoName)); err != nil {
+		return err
+	}
+
+	for _, assistant := range []struct {
+		Dir  string
+		File string
+	}{
+		{Dir: ".claude", File: "CLAUDE.md"},
+		{Dir: ".codex", File: "CODEX.md"},
+		{Dir: ".gemini", File: "GEMINI.md"},
+	} {
+		commandPath := filepath.Join(root, assistant.Dir, "commands", "bootstrap-survey.md")
+		if err := ensureFileIfMissing(commandPath, renderBootstrapSurveyPrompt(repoName, assistant.File)); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func ensureFileIfMissing(path string, body string) error {
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return nil
+}
+
+func renderEnvDist(repoName string) string {
+	return fmt.Sprintf(`# SCG bootstrap environment template for %s
+# Copy to .env and fill values when using GitHub-aware helpers.
+
+# Required for GitHub PR/comment/review collection helpers.
+GITHUB_TOKEN=
+
+# Optional: override repository auto-detection.
+GITHUB_OWNER=
+GITHUB_REPO=
+
+# Optional: for GitHub Enterprise. Leave default for github.com.
+GITHUB_API_BASE=https://api.github.com
+`, repoName)
+}
+
+func renderEnvLocal(repoName string) string {
+	return fmt.Sprintf(`# Local environment for %s (kept local; do not commit secrets).
+# Fill at least GITHUB_TOKEN if you use GitHub review/PR helpers.
+GITHUB_TOKEN=
+GITHUB_OWNER=
+GITHUB_REPO=
+GITHUB_API_BASE=https://api.github.com
+`, repoName)
+}
+
+func renderBootstrapSurveyPrompt(repoName, targetDoc string) string {
+	return fmt.Sprintf(
+		"# /bootstrap-survey\n\n"+
+			"Objective:\n"+
+			"Survey repository %q and improve %q for real project context, not boilerplate.\n\n"+
+			"Execution steps:\n"+
+			"1. Inspect repository structure, entrypoints, build/test tooling, and CI workflows.\n"+
+			"2. Identify architecture boundaries, critical paths, and operational risks.\n"+
+			"3. Update %s with concrete, repo-specific guidance:\n"+
+			"   - commands that actually run here\n"+
+			"   - coding/testing standards used in this repo\n"+
+			"   - deployment/runtime constraints\n"+
+			"   - security and secrets handling rules\n"+
+			"4. Keep guidance short, explicit, and actionable (SOLID, KISS, DRY).\n"+
+			"5. Preserve existing useful sections; only replace generic or stale content.\n\n"+
+			"Minimum discovery checklist:\n"+
+			"- Read: README.md, go.mod, .github/workflows/*, scripts/*, docs/*.\n"+
+			"- Run: go test ./... and project wrapper commands (if present) such as ./scg ci.\n"+
+			"- Confirm: required env vars and external dependencies.\n\n"+
+			"Output requirements:\n"+
+			"- Patch only %s.\n"+
+			"- Include a brief change summary at the top of your final response.\n"+
+			"- If information is missing, state assumptions explicitly.\n",
+		repoName,
+		targetDoc,
+		targetDoc,
+		targetDoc,
+	)
 }
 
 func probeMCPServerUp(root string, name string) error {
