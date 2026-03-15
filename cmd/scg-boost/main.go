@@ -1,16 +1,21 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	iofs "io/fs"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/next-trace/scg-boost/boost"
 	"github.com/next-trace/scg-boost/internal/bootstrap"
@@ -70,8 +75,8 @@ func usage() {
 Laravel Boost-style MCP + context bootstrap for SupplyChainGuard repos.
 
 Usage:
-  scg-boost install [--root .] [--repo <name>] [--force]
-  scg-boost update [--root .] [--repo <name>]
+  scg-boost install [--root .] [--force] [--name <server>] [--check-mcp-up=true]
+  scg-boost update [--root .] [--name <server>] [--check-mcp-up=true]
   scg-boost config --client claude|codex|gemini|cursor|junie [--root .] [--name <server>]
   scg-boost scan [--root .]
   scg-boost mcp [--root .] [--name <app>] [--version <v>]
@@ -88,9 +93,11 @@ func cmdInstall(args []string) int {
 	fs := flag.NewFlagSet("install", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	root := fs.String("root", ".", "repo root")
-	repoName := fs.String("repo", "", "repo name (defaults to folder name)")
+	repoName := fs.String("repo", "", "deprecated: ignored (install is repo-agnostic)")
+	preset := fs.String("preset", "", "deprecated: ignored (install is repo-agnostic)")
 	nameFlag := fs.String("name", "", "mcp server name (defaults to folder name)")
 	force := fs.Bool("force", false, "overwrite existing .claude")
+	checkMCPUp := fs.Bool("check-mcp-up", true, "run MCP startup probe after writing .mcp.json")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -100,9 +107,9 @@ func cmdInstall(args []string) int {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
 	}
-	name := *repoName
-	if name == "" {
-		name = filepath.Base(abs)
+	repoBase := filepath.Base(abs)
+	if strings.TrimSpace(*repoName) != "" || strings.TrimSpace(*preset) != "" {
+		fmt.Fprintln(os.Stderr, "warning: --repo and --preset are deprecated for install/update and are ignored")
 	}
 
 	tpl, err := resources.BootstrapTemplates()
@@ -110,36 +117,39 @@ func cmdInstall(args []string) int {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
 	}
-
-	// Auto-detect repo type and suggest skill if --repo not specified
-	if *repoName == "" {
-		repoType := skills.DetectRepoType(abs)
-		reg, err := skills.Load(tpl)
-		if err == nil && reg.Count() > 0 {
-			matches := reg.MatchRepoType(repoType)
-			if len(matches) > 0 {
-				fmt.Fprintf(os.Stderr, "Detected repo type: %s\n", repoType)
-				fmt.Fprintf(os.Stderr, "Suggested skill: %s\n", matches[0].Name)
-				name = matches[0].Name
-			}
-		}
+	if err := bootstrap.Install(tpl, bootstrap.InstallOptions{RepoName: repoBase, TargetDir: abs, Force: *force}); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
 	}
-
-	if err := bootstrap.Install(tpl, bootstrap.InstallOptions{RepoName: name, TargetDir: abs, Force: *force}); err != nil {
+	if err := ensureAssistantGitignore(abs); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	if err := ensureBootstrapScaffold(abs, repoBase); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
 	}
 
 	serverName := *nameFlag
 	if serverName == "" {
-		serverName = filepath.Base(abs)
+		serverName = repoBase
 	}
 	if err := writeProjectMCPConfig(abs, serverName); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
 	}
+	if *checkMCPUp {
+		if err := probeMCPServerUp(abs, serverName); err != nil {
+			fmt.Fprintln(os.Stderr, "error: mcp up check failed:", err)
+			return 1
+		}
+		if _, err := fmt.Fprintln(os.Stdout, "MCP up check: ok"); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			return 1
+		}
+	}
 
-	if _, err := fmt.Fprintf(os.Stdout, "Installed bootstrap assets for %s in %s (.claude/.codex/.gemini + .mcp.json)\n", name, abs); err != nil {
+	if _, err := fmt.Fprintf(os.Stdout, "Installed bootstrap assets in %s (.claude/.codex/.gemini + .mcp.json + bootstrap survey prompts + .env templates)\n", abs); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
 	}
@@ -150,21 +160,193 @@ func cmdUpdate(args []string) int {
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	root := fs.String("root", ".", "repo root")
-	repoName := fs.String("repo", "", "repo name (defaults to folder name)")
+	repoName := fs.String("repo", "", "deprecated: ignored")
+	preset := fs.String("preset", "", "deprecated: ignored")
 	nameFlag := fs.String("name", "", "mcp server name (defaults to folder name)")
+	checkMCPUp := fs.Bool("check-mcp-up", true, "run MCP startup probe after writing .mcp.json")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
 	installArgs := []string{"--root", *root, "--force"}
-	if *repoName != "" {
+	if strings.TrimSpace(*repoName) != "" {
 		installArgs = append(installArgs, "--repo", *repoName)
+	}
+	if strings.TrimSpace(*preset) != "" {
+		installArgs = append(installArgs, "--preset", *preset)
 	}
 	if *nameFlag != "" {
 		installArgs = append(installArgs, "--name", *nameFlag)
 	}
+	installArgs = append(installArgs, fmt.Sprintf("--check-mcp-up=%t", *checkMCPUp))
 
 	return cmdInstall(installArgs)
+}
+
+func ensureAssistantGitignore(root string) error {
+	gitignorePath := filepath.Join(root, ".gitignore")
+	// #nosec G304 -- path is scoped to validated project root.
+	body, err := os.ReadFile(gitignorePath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("read .gitignore: %w", err)
+	}
+
+	linesToEnsure := []string{
+		".claude/",
+		".codex/",
+		".gemini/",
+	}
+
+	content := string(body)
+	toAppend := make([]string, 0, len(linesToEnsure))
+	for _, line := range linesToEnsure {
+		if !strings.Contains(content, line) {
+			toAppend = append(toAppend, line)
+		}
+	}
+	if len(toAppend) == 0 {
+		return nil
+	}
+
+	var b strings.Builder
+	b.WriteString(content)
+	if len(content) > 0 && !strings.HasSuffix(content, "\n") {
+		b.WriteString("\n")
+	}
+	b.WriteString("\n# scg-boost local AI context\n")
+	for _, line := range toAppend {
+		b.WriteString(line + "\n")
+	}
+
+	if err := os.WriteFile(gitignorePath, []byte(b.String()), 0o600); err != nil {
+		return fmt.Errorf("write .gitignore: %w", err)
+	}
+	return nil
+}
+
+func ensureBootstrapScaffold(root, repoName string) error {
+	if err := os.MkdirAll(filepath.Join(root, ".scg"), 0o750); err != nil {
+		return fmt.Errorf("mkdir .scg: %w", err)
+	}
+
+	if err := ensureFileIfMissing(filepath.Join(root, ".env.dist"), renderEnvDist(repoName)); err != nil {
+		return err
+	}
+	if err := ensureFileIfMissing(filepath.Join(root, ".env"), renderEnvLocal(repoName)); err != nil {
+		return err
+	}
+
+	for _, assistant := range []struct {
+		Dir  string
+		File string
+	}{
+		{Dir: ".claude", File: "CLAUDE.md"},
+		{Dir: ".codex", File: "CODEX.md"},
+		{Dir: ".gemini", File: "GEMINI.md"},
+	} {
+		commandPath := filepath.Join(root, assistant.Dir, "commands", "bootstrap-survey.md")
+		if err := ensureFileIfMissing(commandPath, renderBootstrapSurveyPrompt(repoName, assistant.File)); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func ensureFileIfMissing(path string, body string) error {
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return nil
+}
+
+func renderEnvDist(repoName string) string {
+	return fmt.Sprintf(`# SCG bootstrap environment template for %s
+# Copy to .env and fill values when using GitHub-aware helpers.
+
+# Required for GitHub PR/comment/review collection helpers.
+GITHUB_TOKEN=
+`, repoName)
+}
+
+func renderEnvLocal(repoName string) string {
+	return fmt.Sprintf(`# Local environment for %s (kept local; do not commit secrets).
+# Fill at least GITHUB_TOKEN if you use GitHub review/PR helpers.
+GITHUB_TOKEN=
+`, repoName)
+}
+
+func renderBootstrapSurveyPrompt(repoName, targetDoc string) string {
+	return fmt.Sprintf(
+		"# /bootstrap-survey\n\n"+
+			"Objective:\n"+
+			"Survey repository %q and improve %q for real project context, not boilerplate.\n\n"+
+			"Execution steps:\n"+
+			"1. Inspect repository structure, entrypoints, build/test tooling, and CI workflows.\n"+
+			"2. Identify architecture boundaries, critical paths, and operational risks.\n"+
+			"3. Update %s with concrete, repo-specific guidance:\n"+
+			"   - commands that actually run here\n"+
+			"   - coding/testing standards used in this repo\n"+
+			"   - deployment/runtime constraints\n"+
+			"   - security and secrets handling rules\n"+
+			"4. Keep guidance short, explicit, and actionable (SOLID, KISS, DRY).\n"+
+			"5. Preserve existing useful sections; only replace generic or stale content.\n\n"+
+			"Minimum discovery checklist:\n"+
+			"- Read: README.md, go.mod, .github/workflows/*, scripts/*, docs/*.\n"+
+			"- Run: go test ./... and project wrapper commands (if present) such as ./scg ci.\n"+
+			"- Confirm: required env vars and external dependencies.\n\n"+
+			"Output requirements:\n"+
+			"- Patch only %s.\n"+
+			"- Include a brief change summary at the top of your final response.\n"+
+			"- If information is missing, state assumptions explicitly.\n",
+		repoName,
+		targetDoc,
+		targetDoc,
+		targetDoc,
+	)
+}
+
+func probeMCPServerUp(root string, name string) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve executable: %w", err)
+	}
+
+	// #nosec G204 -- executable path and args are internally constructed.
+	cmd := exec.Command(exe, "mcp", "--root", root, "--name", name, "--version", boost.Version)
+	cmd.Stdout = io.Discard
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("open probe stdin: %w", err)
+	}
+	if err := cmd.Start(); err != nil {
+		_ = stdin.Close()
+		return fmt.Errorf("start probe: %w", err)
+	}
+
+	time.Sleep(400 * time.Millisecond)
+	if err := cmd.Process.Signal(syscall.Signal(0)); err != nil {
+		_ = stdin.Close()
+		_ = cmd.Wait()
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("mcp process not running: %s", msg)
+	}
+
+	_ = stdin.Close()
+	_ = cmd.Process.Kill()
+	_ = cmd.Wait()
+	return nil
 }
 
 func writeProjectMCPConfig(root string, serverName string) error {
@@ -374,9 +556,11 @@ func cmdValidate(args []string) int {
 	}
 
 	issues := []string{}
-
-	if _, err := os.Stat(filepath.Join(abs, ".mcp.json")); os.IsNotExist(err) {
+	mcpPath := filepath.Join(abs, ".mcp.json")
+	if _, err := os.Stat(mcpPath); os.IsNotExist(err) {
 		issues = append(issues, "missing .mcp.json (run 'scg-boost install' or 'scg-boost update')")
+	} else {
+		issues = append(issues, validateMCPJSON(mcpPath)...)
 	}
 
 	checks := []struct {
@@ -389,18 +573,19 @@ func cmdValidate(args []string) int {
 		{path: filepath.Join(abs, ".claude", "commands"), note: "missing .claude/commands directory"},
 		{path: filepath.Join(abs, ".codex"), note: "missing .codex directory"},
 		{path: filepath.Join(abs, ".codex", "CODEX.md"), note: "missing .codex/CODEX.md"},
+		{path: filepath.Join(abs, ".codex", "agents"), note: "missing .codex/agents directory"},
+		{path: filepath.Join(abs, ".codex", "commands"), note: "missing .codex/commands directory"},
+		{path: filepath.Join(abs, ".codex", "skills"), note: "missing .codex/skills directory"},
 		{path: filepath.Join(abs, ".gemini"), note: "missing .gemini directory"},
 		{path: filepath.Join(abs, ".gemini", "GEMINI.md"), note: "missing .gemini/GEMINI.md"},
+		{path: filepath.Join(abs, ".gemini", "agents"), note: "missing .gemini/agents directory"},
+		{path: filepath.Join(abs, ".gemini", "commands"), note: "missing .gemini/commands directory"},
+		{path: filepath.Join(abs, ".gemini", "skills"), note: "missing .gemini/skills directory"},
 	}
 	for _, check := range checks {
 		if _, err := os.Stat(check.path); os.IsNotExist(err) {
 			issues = append(issues, check.note)
 		}
-	}
-
-	// Check for go.mod (Go project)
-	if _, err := os.Stat(filepath.Join(abs, "go.mod")); os.IsNotExist(err) {
-		issues = append(issues, "no go.mod found (not a Go project?)")
 	}
 
 	if len(issues) == 0 {
@@ -413,6 +598,47 @@ func cmdValidate(args []string) int {
 		fmt.Printf("  - %s\n", issue)
 	}
 	return 1
+}
+
+func validateMCPJSON(path string) []string {
+	issues := []string{}
+	// #nosec G304 -- path is caller-controlled from validated project root and fixed filename (.mcp.json).
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return []string{fmt.Sprintf("unable to read .mcp.json: %v", err)}
+	}
+
+	var cfg struct {
+		MCPServers map[string]struct {
+			Command string   `json:"command"`
+			Args    []string `json:"args"`
+		} `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(body, &cfg); err != nil {
+		return []string{fmt.Sprintf("invalid .mcp.json: %v", err)}
+	}
+	if len(cfg.MCPServers) == 0 {
+		return []string{"invalid .mcp.json: missing mcpServers entries"}
+	}
+
+	server, ok := cfg.MCPServers["scg-boost"]
+	if !ok {
+		return []string{"invalid .mcp.json: missing mcpServers.scg-boost"}
+	}
+	if strings.TrimSpace(server.Command) == "" {
+		issues = append(issues, "invalid .mcp.json: mcpServers.scg-boost.command is empty")
+	}
+	hasMCPArg := false
+	for _, arg := range server.Args {
+		if arg == "mcp" {
+			hasMCPArg = true
+			break
+		}
+	}
+	if !hasMCPArg {
+		issues = append(issues, "invalid .mcp.json: mcpServers.scg-boost.args must include \"mcp\"")
+	}
+	return issues
 }
 
 func cmdSkillsList(args []string) int {

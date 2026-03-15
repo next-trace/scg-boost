@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -11,7 +12,7 @@ func TestCmdInstallWritesMCPConfig(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	code := cmdInstall([]string{"--root", root, "--repo", "_generic", "--force", "--name", "demo-server"})
+	code := cmdInstall([]string{"--root", root, "--repo", "_generic", "--force", "--name", "demo-server", "--check-mcp-up=false"})
 	if code != 0 {
 		t.Fatalf("cmdInstall() = %d, want 0", code)
 	}
@@ -51,13 +52,40 @@ func TestCmdInstallWritesMCPConfig(t *testing.T) {
 	if len(server.Args) < 5 {
 		t.Fatalf("args too short: %#v", server.Args)
 	}
+
+	gitignore, err := os.ReadFile(filepath.Join(root, ".gitignore"))
+	if err != nil {
+		t.Fatalf("missing .gitignore: %v", err)
+	}
+	content := string(gitignore)
+	for _, line := range []string{".claude/", ".codex/", ".gemini/"} {
+		if !containsLine(content, line) {
+			t.Fatalf(".gitignore missing %q", line)
+		}
+	}
+
+	if _, err := os.Stat(filepath.Join(root, ".env.dist")); err != nil {
+		t.Fatalf("missing .env.dist: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".env")); err != nil {
+		t.Fatalf("missing .env: %v", err)
+	}
+	for _, p := range []string{
+		filepath.Join(root, ".claude", "commands", "bootstrap-survey.md"),
+		filepath.Join(root, ".codex", "commands", "bootstrap-survey.md"),
+		filepath.Join(root, ".gemini", "commands", "bootstrap-survey.md"),
+	} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("missing bootstrap survey prompt %s: %v", p, err)
+		}
+	}
 }
 
 func TestCmdUpdateWritesMCPConfig(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	code := cmdUpdate([]string{"--root", root, "--repo", "_generic", "--name", "updated-server"})
+	code := cmdUpdate([]string{"--root", root, "--repo", "_generic", "--name", "updated-server", "--check-mcp-up=false"})
 	if code != 0 {
 		t.Fatalf("cmdUpdate() = %d, want 0", code)
 	}
@@ -65,4 +93,45 @@ func TestCmdUpdateWritesMCPConfig(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, ".mcp.json")); err != nil {
 		t.Fatalf("missing .mcp.json after update: %v", err)
 	}
+}
+
+func TestCmdInstall_DeprecatedPresetIgnored(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	code := cmdInstall([]string{"--root", root, "--preset", "boost", "--force", "--check-mcp-up=false"})
+	if code != 0 {
+		t.Fatalf("cmdInstall() = %d, want 0", code)
+	}
+
+	if _, err := os.Stat(filepath.Join(root, ".claude", "commands")); err != nil {
+		t.Fatalf("missing .claude/commands: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".codex", "skills")); err != nil {
+		t.Fatalf("missing .codex/skills: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".gemini", "skills")); err != nil {
+		t.Fatalf("missing .gemini/skills: %v", err)
+	}
+}
+
+func TestCmdValidate_SuccessAfterInstall(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if code := cmdInstall([]string{"--root", root, "--repo", "_generic", "--force", "--name", "demo-server", "--check-mcp-up=false"}); code != 0 {
+		t.Fatalf("cmdInstall() = %d, want 0", code)
+	}
+	if code := cmdValidate([]string{"--root", root}); code != 0 {
+		t.Fatalf("cmdValidate() = %d, want 0", code)
+	}
+}
+
+func containsLine(content, line string) bool {
+	for _, l := range strings.Split(content, "\n") {
+		if l == line {
+			return true
+		}
+	}
+	return false
 }

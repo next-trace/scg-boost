@@ -12,13 +12,12 @@ var guidelinesFS embed.FS
 //go:embed schemas/dbquery.run.output.json
 var schemasFS embed.FS
 
-// Assistant-specific dot-directories are intentionally not embedded from
-// bootstrap_templates to keep them untracked in Git. The installer provides
-// minimal defaults when those templates are absent.
-//
 //go:embed bootstrap_templates/_PACK_README.md
 //go:embed bootstrap_templates/_PACK_PLAN.md
 //go:embed bootstrap_templates/*/skill.json
+//go:embed bootstrap_templates/*/.claude/**
+//go:embed bootstrap_templates/*/.codex/**
+//go:embed bootstrap_templates/*/.gemini/**
 var bootstrapFS embed.FS
 
 func Guidelines() ([]byte, error) {

@@ -16,18 +16,29 @@ var defaultAssistantFiles = map[string]string{
 	".gemini/GEMINI.md": "# Gemini Context\n\nLocal Gemini context for this repository.\n",
 }
 
+var defaultAssistantDirs = []string{
+	".claude/agents",
+	".claude/commands",
+	".codex/agents",
+	".codex/commands",
+	".codex/skills",
+	".gemini/agents",
+	".gemini/commands",
+	".gemini/skills",
+}
+
 type InstallOptions struct {
 	RepoName  string
 	TargetDir string
 	Force     bool
 }
 
-// Install copies the embedded .claude template set into the target repository.
+// Install copies the generic embedded assistant template set into the target repository.
 //
 // Rules:
 // - Writes only under <TargetDir>/.claude
 // - Refuses to overwrite without Force
-// - Uses repo-specific templates if present, otherwise falls back to _generic
+// - Uses repo-agnostic templates from _generic
 func Install(templates fs.FS, opt InstallOptions) error {
 	if opt.TargetDir == "" {
 		return errors.New("target dir is required")
@@ -37,22 +48,13 @@ func Install(templates fs.FS, opt InstallOptions) error {
 		return fmt.Errorf("abs target dir: %w", err)
 	}
 	opt.TargetDir = absTarget
-	if opt.RepoName == "" {
-		opt.RepoName = filepath.Base(opt.TargetDir)
-	}
-
-	// Ensure repo folder exists in templates; fallback to _generic
-	srcRepo := opt.RepoName
-	if _, err := fs.Stat(templates, srcRepo); err != nil {
-		srcRepo = "_generic"
-		if _, err2 := fs.Stat(templates, srcRepo); err2 != nil {
-			return fmt.Errorf("missing embedded templates: %w", err2)
-		}
+	if _, err := fs.Stat(templates, "_generic"); err != nil {
+		return fmt.Errorf("missing embedded templates: %w", err)
 	}
 
 	// We pass the .claude path because the installer expects it as a starting point,
 	// but it will also look for sibling .gemini and .codex.
-	srcRoot := filepath.ToSlash(filepath.Join(srcRepo, ".claude"))
+	srcRoot := filepath.ToSlash(filepath.Join("_generic", ".claude"))
 	return installFromPath(templates, srcRoot, opt)
 }
 
@@ -81,7 +83,9 @@ func InstallSkill(templates fs.FS, skillName string, opt InstallOptions) error {
 	return installFromPath(templates, srcRoot, opt)
 }
 
-// installFromPath performs the actual installation from srcRoot to opt.TargetDir/.claude.
+// installFromPath performs the actual installation from srcRoot to opt.TargetDir.
+// It applies repo-specific templates first, then fills any missing files from
+// _generic templates (without overwriting existing files unless Force=true).
 func installFromPath(templates fs.FS, srcRoot string, opt InstallOptions) error {
 	root, err := os.OpenRoot(opt.TargetDir)
 	if err != nil {
@@ -94,62 +98,79 @@ func installFromPath(templates fs.FS, srcRoot string, opt InstallOptions) error 
 	// Install .claude, .gemini, and .codex if they exist in templates
 	clientDirs := []string{".claude", ".gemini", ".codex"}
 	baseSrcRoot := filepath.Dir(srcRoot)
-
-	for _, dir := range clientDirs {
-		srcDir := filepath.ToSlash(filepath.Join(baseSrcRoot, dir))
-		if _, err := fs.Stat(templates, srcDir); err != nil {
-			continue
+	sourceRoots := []string{baseSrcRoot}
+	if baseSrcRoot != "_generic" {
+		if _, err := fs.Stat(templates, "_generic"); err == nil {
+			sourceRoots = append(sourceRoots, "_generic")
 		}
+	}
 
-		dstRootRel := dir
-		dstRootAbs := filepath.Join(opt.TargetDir, dstRootRel)
-		if st, err := root.Stat(dstRootRel); err == nil && st.IsDir() && !opt.Force {
-			fmt.Printf("Skipping %s (already exists, use --force to overwrite)\n", dstRootAbs)
-			continue
-		}
+	for _, srcRootName := range sourceRoots {
+		for _, dir := range clientDirs {
+			srcDir := filepath.ToSlash(filepath.Join(srcRootName, dir))
+			if _, err := fs.Stat(templates, srcDir); err != nil {
+				continue
+			}
 
-		if err := root.MkdirAll(dstRootRel, 0o750); err != nil {
-			return fmt.Errorf("mkdir %s: %w", dstRootAbs, err)
-		}
+			dstRootRel := dir
+			dstRootAbs := filepath.Join(opt.TargetDir, dstRootRel)
+			if err := root.MkdirAll(dstRootRel, 0o750); err != nil {
+				return fmt.Errorf("mkdir %s: %w", dstRootAbs, err)
+			}
 
-		err = fs.WalkDir(templates, srcDir, func(path string, d fs.DirEntry, err error) (retErr error) {
-			if err != nil {
-				return err
-			}
-			rel := strings.TrimPrefix(path, srcDir)
-			rel = strings.TrimPrefix(rel, "/")
-			dst := filepath.Join(dstRootRel, filepath.FromSlash(rel))
-			if d.IsDir() {
-				return root.MkdirAll(dst, 0o750)
-			}
-			if err := root.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
-				return err
-			}
-			srcFile, err := templates.Open(path)
-			if err != nil {
-				return err
-			}
-			defer func() {
-				if cerr := srcFile.Close(); cerr != nil && retErr == nil {
-					retErr = cerr
+			err = fs.WalkDir(templates, srcDir, func(path string, d fs.DirEntry, err error) (retErr error) {
+				if err != nil {
+					return err
 				}
-			}()
-			out, err := root.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+				rel := strings.TrimPrefix(path, srcDir)
+				rel = strings.TrimPrefix(rel, "/")
+				dst := filepath.Join(dstRootRel, filepath.FromSlash(rel))
+				if d.IsDir() {
+					return root.MkdirAll(dst, 0o750)
+				}
+				if err := root.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
+					return err
+				}
+				if !opt.Force {
+					_, err := root.Stat(dst)
+					if err == nil {
+						return nil
+					}
+					if !errors.Is(err, fs.ErrNotExist) {
+						return err
+					}
+				}
+				srcFile, err := templates.Open(path)
+				if err != nil {
+					return err
+				}
+				defer func() {
+					if cerr := srcFile.Close(); cerr != nil && retErr == nil {
+						retErr = cerr
+					}
+				}()
+				out, err := root.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+				if err != nil {
+					return err
+				}
+				defer func() {
+					if cerr := out.Close(); cerr != nil && retErr == nil {
+						retErr = cerr
+					}
+				}()
+				content, err := io.ReadAll(srcFile)
+				if err != nil {
+					return err
+				}
+				content = renderTemplate(path, content, opt)
+				if _, err := out.Write(content); err != nil {
+					return err
+				}
+				return nil
+			})
 			if err != nil {
 				return err
 			}
-			defer func() {
-				if cerr := out.Close(); cerr != nil && retErr == nil {
-					retErr = cerr
-				}
-			}()
-			if _, err := io.Copy(out, srcFile); err != nil {
-				return err
-			}
-			return nil
-		})
-		if err != nil {
-			return err
 		}
 	}
 
@@ -160,7 +181,39 @@ func installFromPath(templates fs.FS, srcRoot string, opt InstallOptions) error 
 			return err
 		}
 	}
+	for _, dir := range defaultAssistantDirs {
+		if err := root.MkdirAll(dir, 0o750); err != nil {
+			return fmt.Errorf("mkdir %s: %w", dir, err)
+		}
+	}
 	return nil
+}
+
+func renderTemplate(srcPath string, content []byte, opt InstallOptions) []byte {
+	lower := strings.ToLower(srcPath)
+	switch {
+	case strings.HasSuffix(lower, ".md"),
+		strings.HasSuffix(lower, ".json"),
+		strings.HasSuffix(lower, ".txt"),
+		strings.HasSuffix(lower, ".yaml"),
+		strings.HasSuffix(lower, ".yml"):
+	default:
+		return content
+	}
+
+	repoName := strings.TrimSpace(opt.RepoName)
+	if repoName == "" {
+		repoName = filepath.Base(opt.TargetDir)
+	}
+	replacements := map[string]string{
+		"{{REPO_NAME}}": repoName,
+		"{{REPO_ROOT}}": opt.TargetDir,
+	}
+	out := string(content)
+	for placeholder, value := range replacements {
+		out = strings.ReplaceAll(out, placeholder, value)
+	}
+	return []byte(out)
 }
 
 func ensureDefaultFile(root *os.Root, relPath, content string) error {
